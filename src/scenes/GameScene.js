@@ -62,11 +62,12 @@ export default class GameScene extends Phaser.Scene {
     // World bounds
     this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H);
 
-    // Camera
+    // Camera — static, no zoom, no scroll.
+    // Field is sized to match the 960×540 viewport exactly.
     const cam = this.cameras.main;
     cam.setBounds(0, 0, WORLD_W, WORLD_H);
-    const zoom = isMobile() ? CAM_ZOOM_MOBILE : CAM_ZOOM_DESKTOP;
-    cam.setZoom(zoom);
+    cam.setZoom(1);
+    cam.setScroll(0, 0);
 
     // Field
     this.field = new FieldRenderer(this);
@@ -280,10 +281,7 @@ export default class GameScene extends Phaser.Scene {
       this.defensePlayers, this.currentDefPlay, this.match.ballYardLine, goingRight
     );
 
-    // Camera to LOS
-    const losX = yardToPx(this.match.ballYardLine, goingRight);
-    this.cameras.main.centerOn(losX, fieldCenterY());
-
+    // Camera is static — full field always visible, no centering needed.
     this.match.isClockRunning = false;
   }
 
@@ -1180,23 +1178,9 @@ export default class GameScene extends Phaser.Scene {
   }
 
   updateCamera(dt) {
-    const cam = this.cameras.main;
-    let targetX, targetY;
-
-    if (this.ballCarrier) {
-      targetX = this.ballCarrier.sprite.x;
-      targetY = this.ballCarrier.sprite.y;
-    } else if (this.ball.sprite.visible) {
-      targetX = this.ball.sprite.x;
-      targetY = this.ball.sprite.y;
-    } else {
-      const goingRight = this.match.offenseGoingRight;
-      targetX = yardToPx(this.match.ballYardLine, goingRight);
-      targetY = fieldCenterY();
-    }
-
-    cam.scrollX += (targetX - cam.scrollX - cam.width / (2 * cam.zoom)) * CAM_LERP;
-    cam.scrollY += (targetY - cam.scrollY - cam.height / (2 * cam.zoom)) * CAM_LERP;
+    // Static camera — field is sized to fit the viewport exactly, so
+    // the entire field (both sidelines and both end zones) is always visible.
+    // No scrolling or zoom needed.
   }
 
   shutdown() {

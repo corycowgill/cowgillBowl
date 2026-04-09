@@ -1,26 +1,29 @@
 // ── Field Dimensions ──
-export const YARD_PX = 12;
+// Sized so the entire field (sideline to sideline, end zone to end zone)
+// fits exactly inside the 960×540 viewport with the HUD at top.
+export const YARD_PX = 8;
 export const FIELD_YARDS = 100;
 export const END_ZONE_YARDS = 10;
 export const FIELD_WIDTH_YARDS = 53.33;
 
-export const FIELD_LENGTH_PX = FIELD_YARDS * YARD_PX;           // 1200
-export const END_ZONE_PX = END_ZONE_YARDS * YARD_PX;            // 120
-export const TOTAL_FIELD_PX = FIELD_LENGTH_PX + END_ZONE_PX * 2; // 1440
-export const FIELD_WIDTH_PX = Math.round(FIELD_WIDTH_YARDS * YARD_PX); // 640
+export const FIELD_LENGTH_PX = FIELD_YARDS * YARD_PX;           // 800
+export const END_ZONE_PX = END_ZONE_YARDS * YARD_PX;            // 80
+export const TOTAL_FIELD_PX = FIELD_LENGTH_PX + END_ZONE_PX * 2; // 960 — matches viewport width
+export const FIELD_WIDTH_PX = Math.round(FIELD_WIDTH_YARDS * YARD_PX); // 427
 
-export const FIELD_LEFT = 80;   // left padding
-export const FIELD_TOP = 55;    // top padding
-export const WORLD_W = TOTAL_FIELD_PX + FIELD_LEFT * 2;  // 1600
-export const WORLD_H = FIELD_WIDTH_PX + FIELD_TOP * 2;   // 750
+export const FIELD_LEFT = 0;    // no horizontal padding — field fills viewport
+export const FIELD_TOP = 58;    // below 48px HUD with a little breathing room
+export const WORLD_W = TOTAL_FIELD_PX;                       // 960
+export const WORLD_H = FIELD_TOP + FIELD_WIDTH_PX + 55;      // 540
 
 // ── Player ──
-export const PLAYER_RADIUS = 10;
+export const PLAYER_RADIUS = 9;
 export const PLAYER_LABEL_SIZE = 9;
 
 // ── Speed (pixels/sec) ──
-export const BASE_SPEED = 120;
-export const SPEED_RANGE = 200;   // attr 0→100 maps to BASE..BASE+RANGE
+// Scaled down from the previous 12 px/yard field (~0.67×)
+export const BASE_SPEED = 80;
+export const SPEED_RANGE = 135;
 export const SPRINT_MULT = 1.30;
 
 // ── Match ──
@@ -38,21 +41,23 @@ export const SCORE_SAFETY = 2;
 export const SCORE_TWO_PT = 2;
 
 // ── Gameplay tuning ──
-export const PASS_SPEED = 450;          // px/sec
-export const PASS_WOBBLE = 0.04;        // radians of random deviation
-export const CATCH_RADIUS = 28;         // px – receiver must be within this of ball
-export const TACKLE_RADIUS = 16;        // px – overlap to trigger tackle check
-export const FUMBLE_BASE_CHANCE = 0.03; // base chance on big hits
-export const INT_BASE_CHANCE = 0.08;    // base interception chance when contested
+export const PASS_SPEED = 320;          // px/sec (scaled for smaller field)
+export const PASS_WOBBLE = 0.04;
+export const CATCH_RADIUS = 24;
+export const TACKLE_RADIUS = 14;
+export const FUMBLE_BASE_CHANCE = 0.03;
+export const INT_BASE_CHANCE = 0.08;
 
 // ── AI ──
 export const AI_REACTION_MS = 250;
 export const AI_PURSUIT_WEIGHT = 0.7;
 
 // ── Camera ──
+// With the field sized to fit the viewport, zoom is 1.0 and the camera
+// is static (no follow). Full field always visible.
 export const CAM_LERP = 0.08;
-export const CAM_ZOOM_DESKTOP = 1.4;
-export const CAM_ZOOM_MOBILE = 1.7;
+export const CAM_ZOOM_DESKTOP = 1.0;
+export const CAM_ZOOM_MOBILE = 1.0;
 
 // ── Clock speed during play (seconds of game time per real second) ──
 export const CLOCK_SPEED_LIVE = 3;      // clock runs 3× during live play

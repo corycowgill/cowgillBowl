@@ -1,7 +1,7 @@
 import { PLAYER_RADIUS, PLAYER_LABEL_SIZE, attrToSpeed, SPRINT_MULT } from '../config.js';
 import SpriteGenerator from '../sprites/SpriteGenerator.js';
 
-const SPRITE_SCALE = 1.8; // scale up the 20x24 pixel art
+const SPRITE_SCALE = 1.25; // scale up the 20x24 pixel art for the 8 px/yd field
 
 export default class PlayerEntity {
   constructor(scene, data, teamColor, isOffense, teamAbbr) {
