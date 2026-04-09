@@ -96,6 +96,10 @@ export function attrToSpeed(speedAttr) {
 
 // Detect mobile
 export function isMobile() {
-  return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile/i.test(navigator.userAgent)
-    || (navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
+  if (/Android|iPhone|iPad|iPod|Opera Mini|IEMobile|webOS|BlackBerry/i.test(navigator.userAgent)) return true;
+  if ('ontouchstart' in window) return true;
+  if (navigator.maxTouchPoints && navigator.maxTouchPoints > 1) return true;
+  // iPad with desktop UA
+  if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 0) return true;
+  return false;
 }

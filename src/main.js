@@ -18,6 +18,9 @@ const config = {
     width: 960,
     height: 540,
   },
+  input: {
+    activePointers: 3, // support multi-touch (joystick + buttons)
+  },
   physics: {
     default: 'arcade',
     arcade: {
