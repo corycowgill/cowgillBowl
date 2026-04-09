@@ -352,15 +352,27 @@ export default class GameScene extends Phaser.Scene {
   }
 
   switchDefender() {
+    // Tecmo-style: switch to the defender nearest the ball carrier
+    // (but not the one currently controlled)
     const current = this.controlledDefender;
-    let nextIdx = 0;
-    if (current) {
-      const idx = this.defensePlayers.indexOf(current);
-      nextIdx = (idx + 1) % this.defensePlayers.length;
-      current.setControlled(false);
+    let best = null;
+    let bestDist = Infinity;
+    const targetX = this.ballCarrier ? this.ballCarrier.sprite.x : this.ball.sprite.x;
+    const targetY = this.ballCarrier ? this.ballCarrier.sprite.y : this.ball.sprite.y;
+
+    for (const p of this.defensePlayers) {
+      if (p === current) continue;
+      const dx = p.sprite.x - targetX;
+      const dy = p.sprite.y - targetY;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d < bestDist) { bestDist = d; best = p; }
     }
-    this.defensePlayers[nextIdx].setControlled(true);
-    this.controlledDefender = this.defensePlayers[nextIdx];
+
+    if (best) {
+      if (current) current.setControlled(false);
+      best.setControlled(true);
+      this.controlledDefender = best;
+    }
   }
 
   throwPass() {
@@ -471,6 +483,7 @@ export default class GameScene extends Phaser.Scene {
     // Stop all players and trigger down animation
     this.homePlayers.forEach(p => { p.stop(); p.setControlled(false); });
     this.awayPlayers.forEach(p => { p.stop(); p.setControlled(false); });
+    if (this._recvIndicator) this._recvIndicator.clear();
     if (this.ballCarrier) this.ballCarrier.playDownAnim();
 
     const result = this.match.advanceBall(yardsGained);
@@ -621,12 +634,13 @@ export default class GameScene extends Phaser.Scene {
         this.stateTimer -= dt;
         if (this.stateTimer <= 0) {
           if (this.humanOnOffense) {
-            // Wait for human to snap
+            const isPass = this.currentPlay && this.currentPlay.type === 'pass';
+            this.hud.showMessage(isPass ? 'SPACE=snap  then  J=cycle  SPACE=throw' : 'SPACE=snap  then  Arrows=run  K=sprint', 0.05);
             if (Phaser.Input.Keyboard.JustDown(this.cursors.space) || this.mobileControls.consumeAction()) {
               this.snapBall();
             }
           } else {
-            // AI snaps after delay
+            this.hud.showMessage('J=switch defender  SPACE=dive tackle  K=sprint', 0.05);
             this.stateTimer -= dt;
             if (this.stateTimer <= -0.5) this.snapBall();
           }
@@ -898,85 +912,146 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  updateHumanOffense(dt) {
-    const controlled = this.offensePlayers.find(p => p.controlled);
-    if (!controlled) return;
-
-    // Movement
+  // ── Read directional input (shared by offense + defense) ──
+  _readMoveInput() {
     let mx = 0, my = 0;
     if (this.cursors.left.isDown || this.cursors.a.isDown) mx = -1;
     if (this.cursors.right.isDown || this.cursors.d.isDown) mx = 1;
     if (this.cursors.up.isDown || this.cursors.w.isDown) my = -1;
     if (this.cursors.down.isDown || this.cursors.s.isDown) my = 1;
-
-    // Mobile joystick
     if (this.mobileControls.enabled) {
-      mx = this.mobileControls.moveX;
-      my = this.mobileControls.moveY;
+      if (Math.abs(this.mobileControls.moveX) > 0.1 || Math.abs(this.mobileControls.moveY) > 0.1) {
+        mx = this.mobileControls.moveX;
+        my = this.mobileControls.moveY;
+      }
     }
+    return { mx, my };
+  }
 
-    // Sprint
-    controlled.isSprinting = this.cursors.k.isDown || this.mobileControls.sprintPressed;
-
+  // ── Apply movement to a controlled player ──
+  _applyMove(player, mx, my) {
+    const sprint = this.cursors.k.isDown || this.mobileControls.sprintPressed;
+    player.isSprinting = sprint;
     if (mx !== 0 || my !== 0) {
-      const spd = attrToSpeed(controlled.data.spd) * (controlled.isSprinting ? 1.3 : 1);
+      const spd = attrToSpeed(player.data.spd) * (sprint ? 1.3 : 1);
       const len = Math.sqrt(mx * mx + my * my);
-      controlled.sprite.body.setVelocity((mx / len) * spd, (my / len) * spd);
-    } else if (this.ballCarrier === controlled) {
-      // Auto-run forward if no input (run plays only)
-      if (this.currentPlay && this.currentPlay.type === 'run') {
-        controlled.followRoute();
-      } else {
-        controlled.sprite.body.setVelocity(0, 0);
-      }
-    }
-
-    // Pass (J key)
-    if (this.currentPlay && this.currentPlay.type === 'pass' && !this.passThrown) {
-      if (Phaser.Input.Keyboard.JustDown(this.cursors.j) || this.mobileControls.consumePass()) {
-        if (this.ballCarrier === this.qb) {
-          this.throwPass();
-        }
-      }
-      // Cycle receivers with space
-      if (Phaser.Input.Keyboard.JustDown(this.cursors.space)) {
-        this.selectedReceiverIdx = (this.selectedReceiverIdx + 1) % Math.max(1, this.receivers.length);
-      }
+      player.sprite.body.setVelocity((mx / len) * spd, (my / len) * spd);
+    } else {
+      player.sprite.body.setVelocity(0, 0);
     }
   }
 
+  // ── Draw receiver target arrow above the currently selected receiver ──
+  _drawReceiverIndicator() {
+    if (!this._recvIndicator) {
+      this._recvIndicator = this.add.graphics();
+      this._recvIndicator.setDepth(200);
+    }
+    this._recvIndicator.clear();
+
+    if (!this.humanOnOffense) return;
+    if (this.passThrown) return;
+    if (!this.receivers || this.receivers.length === 0) return;
+    if (this.currentPlay && this.currentPlay.type !== 'pass') return;
+
+    const target = this.receivers[this.selectedReceiverIdx % this.receivers.length];
+    if (!target) return;
+
+    const tx = target.sprite.x;
+    const ty = target.sprite.y - 28;
+
+    // Pulsing arrow
+    const pulse = Math.sin(this.time.now * 0.008) * 3;
+    this._recvIndicator.fillStyle(0x00ff00, 0.9);
+    this._recvIndicator.fillTriangle(tx - 6, ty - 4 + pulse, tx + 6, ty - 4 + pulse, tx, ty + 5 + pulse);
+    this._recvIndicator.fillStyle(0x00ff00, 0.6);
+    this._recvIndicator.fillCircle(tx, ty + 8 + pulse, 3);
+  }
+
+  // ══════════════════════════════════════════════
+  //  HUMAN OFFENSE — Tecmo-style
+  // ══════════════════════════════════════════════
+  updateHumanOffense(dt) {
+    const { mx, my } = this._readMoveInput();
+    const isPassPlay = this.currentPlay && this.currentPlay.type === 'pass';
+
+    // ── PASS PLAY: control QB until throw, then control receiver ──
+    if (isPassPlay && !this.passThrown) {
+      // QB is controlled
+      this.qb.setControlled(true);
+      this._applyMove(this.qb, mx, my);
+
+      // J / PASS button = cycle receiver target
+      if (Phaser.Input.Keyboard.JustDown(this.cursors.j) || this.mobileControls.consumePass()) {
+        this.selectedReceiverIdx = (this.selectedReceiverIdx + 1) % Math.max(1, this.receivers.length);
+      }
+
+      // SPACE / ACT button = throw to highlighted receiver
+      if (Phaser.Input.Keyboard.JustDown(this.cursors.space) || this.mobileControls.consumeAction()) {
+        this.throwPass();
+      }
+
+      // Draw the receiver target indicator
+      this._drawReceiverIndicator();
+      return;
+    }
+
+    // ── After catch on pass play: control the receiver who caught it ──
+    if (isPassPlay && this.passThrown && this.ballCarrier && this.ballCarrier !== this.qb) {
+      this.qb.setControlled(false);
+      this.ballCarrier.setControlled(true);
+      this._applyMove(this.ballCarrier, mx, my);
+      if (this._recvIndicator) this._recvIndicator.clear();
+      return;
+    }
+
+    // ── RUN PLAY: control the ball carrier ──
+    if (this.ballCarrier) {
+      this.ballCarrier.setControlled(true);
+      if (mx !== 0 || my !== 0) {
+        this._applyMove(this.ballCarrier, mx, my);
+      } else {
+        // If no input, auto-run the designed play route
+        this.ballCarrier.followRoute();
+      }
+    }
+
+    if (this._recvIndicator) this._recvIndicator.clear();
+  }
+
+  // ══════════════════════════════════════════════
+  //  HUMAN DEFENSE — Tecmo-style
+  // ══════════════════════════════════════════════
   updateHumanDefense(dt) {
     const controlled = this.controlledDefender;
-    if (!controlled) return;
+    if (!controlled) { this.selectNearestDefender(); return; }
 
-    // Movement
-    let mx = 0, my = 0;
-    if (this.cursors.left.isDown || this.cursors.a.isDown) mx = -1;
-    if (this.cursors.right.isDown || this.cursors.d.isDown) mx = 1;
-    if (this.cursors.up.isDown || this.cursors.w.isDown) my = -1;
-    if (this.cursors.down.isDown || this.cursors.s.isDown) my = 1;
+    const { mx, my } = this._readMoveInput();
 
-    if (this.mobileControls.enabled) {
-      mx = this.mobileControls.moveX;
-      my = this.mobileControls.moveY;
-    }
+    // Move the controlled defender
+    this._applyMove(controlled, mx, my);
 
-    controlled.isSprinting = this.cursors.k.isDown || this.mobileControls.sprintPressed;
-
-    if (mx !== 0 || my !== 0) {
-      const spd = attrToSpeed(controlled.data.spd) * (controlled.isSprinting ? 1.3 : 1);
-      const len = Math.sqrt(mx * mx + my * my);
-      controlled.sprite.body.setVelocity((mx / len) * spd, (my / len) * spd);
-    } else {
-      controlled.sprite.body.setVelocity(0, 0);
-    }
-
-    // Switch defender (J)
+    // J / PASS button = switch to defender nearest to the ball carrier
     if (Phaser.Input.Keyboard.JustDown(this.cursors.j) || this.mobileControls.consumePass()) {
       this.switchDefender();
     }
 
-    // AI handles other defenders
+    // SPACE / ACT button = dive tackle (burst toward ball carrier)
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.space) || this.mobileControls.consumeAction()) {
+      if (this.ballCarrier) {
+        // Lunge toward the ball carrier
+        const dx = this.ballCarrier.sprite.x - controlled.sprite.x;
+        const dy = this.ballCarrier.sprite.y - controlled.sprite.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 0 && dist < 120) {
+          const burstSpd = attrToSpeed(controlled.data.spd) * 1.8;
+          controlled.sprite.body.setVelocity((dx / dist) * burstSpd, (dy / dist) * burstSpd);
+          controlled.playTackleAnim();
+        }
+      }
+    }
+
+    // AI handles all other (non-controlled) defenders
     const otherDefs = this.defensePlayers.filter(p => !p.controlled);
     this.ai.updateDefenders(otherDefs, this.ballCarrier, this.ball, dt);
   }
