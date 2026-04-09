@@ -134,7 +134,7 @@ export default class GameScene extends Phaser.Scene {
     const createTeamPlayers = (team, arr, isOffense) => {
       const eleven = pickEleven(team.roster);
       eleven.forEach(data => {
-        const pe = new PlayerEntity(this, data, team.colors.primary, isOffense);
+        const pe = new PlayerEntity(this, data, team.colors.primary, isOffense, team.abbr);
         pe.setPosition(WORLD_W / 2, WORLD_H / 2); // will be repositioned
         arr.push(pe);
       });
@@ -291,6 +291,10 @@ export default class GameScene extends Phaser.Scene {
     this.passThrown = false;
     this.selectedReceiverIdx = 0;
     this.passTarget = null;
+
+    // Reset all player animations for new play
+    this.homePlayers.forEach(p => p.resetAnim());
+    this.awayPlayers.forEach(p => p.resetAnim());
 
     const goingRight = this.match.offenseGoingRight;
 
@@ -464,9 +468,10 @@ export default class GameScene extends Phaser.Scene {
     this.stateTimer = 2;
     this.match.isClockRunning = false;
 
-    // Stop all players
+    // Stop all players and trigger down animation
     this.homePlayers.forEach(p => { p.stop(); p.setControlled(false); });
     this.awayPlayers.forEach(p => { p.stop(); p.setControlled(false); });
+    if (this.ballCarrier) this.ballCarrier.playDownAnim();
 
     const result = this.match.advanceBall(yardsGained);
 
@@ -484,6 +489,9 @@ export default class GameScene extends Phaser.Scene {
       this.hud.showMessage(message, 2.5);
       this.stateTimer = 3;
       this.afterTD = true;
+      // Celebrate animation for the scorer
+      if (this.ballCarrier) this.ballCarrier.playCelebrateAnim();
+      this.offensePlayers.forEach(p => p.playCelebrateAnim());
       return;
     }
 
@@ -799,6 +807,7 @@ export default class GameScene extends Phaser.Scene {
           return;
         }
         if (r.result === 'tackle' || r.result === 'stumble') {
+          r.defender.playTackleAnim();
           const yardsGained = this.executor.pxToYardsFromLOS(
             this.ballCarrier.sprite.x, this.match.ballYardLine, goingRight
           );
@@ -835,6 +844,7 @@ export default class GameScene extends Phaser.Scene {
         this.passTarget, this.ball, this.defensePlayers
       );
       if (catchResult.caught) {
+        this.passTarget.playCatchAnim();
         this.ballCarrier = this.passTarget;
         this.ball.attachTo(this.passTarget);
         if (this.humanOnOffense) {

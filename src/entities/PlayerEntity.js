@@ -1,10 +1,14 @@
 import { PLAYER_RADIUS, PLAYER_LABEL_SIZE, attrToSpeed, SPRINT_MULT } from '../config.js';
+import SpriteGenerator from '../sprites/SpriteGenerator.js';
+
+const SPRITE_SCALE = 1.8; // scale up the 20x24 pixel art
 
 export default class PlayerEntity {
-  constructor(scene, data, teamColor, isOffense) {
+  constructor(scene, data, teamColor, isOffense, teamAbbr) {
     this.scene = scene;
     this.data = data;
     this.teamColor = teamColor;
+    this.teamAbbr = teamAbbr || '';
     this.isOffense = isOffense;
     this.goingRight = true;
     this.controlled = false;
@@ -16,22 +20,63 @@ export default class PlayerEntity {
     this.isSprinting = false;
     this.maxSpeed = attrToSpeed(data.spd);
     this.currentSpeed = 0;
+    this.currentAnim = 'idle';
 
-    this.gfx = scene.add.graphics();
+    // Jersey number label
     this.label = scene.add.text(0, 0, '' + data.num, {
       fontFamily: 'monospace', fontSize: PLAYER_LABEL_SIZE + 'px',
       color: '#ffffff', stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(12);
 
-    this.sprite = scene.add.circle(0, 0, PLAYER_RADIUS, teamColor);
-    scene.physics.add.existing(this.sprite);
-    this.sprite.body.setCircle(PLAYER_RADIUS);
-    this.sprite.body.setCollideWorldBounds(false);
-    this.sprite.setDepth(10);
+    // Animated sprite (replaces the old circle)
+    const textureKey = `player_${teamAbbr}`;
+    const hasTexture = scene.textures.exists(textureKey);
+
+    if (hasTexture) {
+      this.sprite = scene.add.sprite(0, 0, textureKey, 0);
+      this.sprite.setScale(SPRITE_SCALE);
+      this.sprite.setDepth(10);
+      scene.physics.add.existing(this.sprite);
+      this.sprite.body.setSize(SpriteGenerator.FRAME_W * 0.5, SpriteGenerator.FRAME_H * 0.5);
+      this.sprite.body.setOffset(SpriteGenerator.FRAME_W * 0.25, SpriteGenerator.FRAME_H * 0.35);
+      this.sprite.body.setCollideWorldBounds(false);
+      // Start idle animation
+      this.playAnim('idle');
+    } else {
+      // Fallback: circle (if sprites not generated yet)
+      this.sprite = scene.add.circle(0, 0, PLAYER_RADIUS, teamColor);
+      scene.physics.add.existing(this.sprite);
+      this.sprite.body.setCircle(PLAYER_RADIUS);
+      this.sprite.body.setCollideWorldBounds(false);
+      this.sprite.setDepth(10);
+      this.useFallback = true;
+    }
+
     this.sprite.entity = this;
+
+    // Selection ring (drawn around controlled player)
+    this.ring = scene.add.graphics();
+    this.ring.setDepth(11);
+
+    // Star indicator
+    this.starGfx = null;
+    if (data.star) {
+      this.starGfx = scene.add.graphics();
+      this.starGfx.setDepth(11);
+    }
 
     this.homeX = 0;
     this.homeY = 0;
+  }
+
+  playAnim(name) {
+    if (this.useFallback) return;
+    if (this.currentAnim === name) return;
+    const key = SpriteGenerator.animKey(this.teamAbbr, name);
+    if (this.scene.anims.exists(key)) {
+      this.sprite.play(key, true);
+      this.currentAnim = name;
+    }
   }
 
   setPosition(x, y) {
@@ -44,22 +89,48 @@ export default class PlayerEntity {
   setControlled(val) { this.controlled = val; }
 
   update(dt) {
+    // Label above sprite
     this.label.x = this.sprite.x;
-    this.label.y = this.sprite.y - PLAYER_RADIUS - 6;
-    this.gfx.clear();
-    this.gfx.fillStyle(this.teamColor, 1);
-    this.gfx.fillCircle(0, 0, PLAYER_RADIUS);
+    this.label.y = this.sprite.y - (this.useFallback ? PLAYER_RADIUS + 6 : SpriteGenerator.FRAME_H * SPRITE_SCALE * 0.45);
+
+    // Flip sprite based on movement direction
+    if (!this.useFallback) {
+      if (this.sprite.body.velocity.x < -10) {
+        this.sprite.setFlipX(true);
+      } else if (this.sprite.body.velocity.x > 10) {
+        this.sprite.setFlipX(false);
+      }
+
+      // Choose animation based on state
+      const speed = Math.abs(this.sprite.body.velocity.x) + Math.abs(this.sprite.body.velocity.y);
+      if (this.currentAnim !== 'tackle' && this.currentAnim !== 'down' &&
+          this.currentAnim !== 'catch' && this.currentAnim !== 'celebrate') {
+        if (speed > 20) {
+          this.playAnim('run');
+        } else {
+          this.playAnim('idle');
+        }
+      }
+    }
+
+    // Selection ring
+    this.ring.clear();
     if (this.controlled) {
-      this.gfx.lineStyle(2, 0xffffff, 1);
-      this.gfx.strokeCircle(0, 0, PLAYER_RADIUS + 3);
+      this.ring.lineStyle(2, 0xffffff, 1);
+      this.ring.strokeCircle(this.sprite.x, this.sprite.y, this.useFallback ? PLAYER_RADIUS + 3 : 18);
     }
-    if (this.data.star) {
-      this.gfx.lineStyle(1, 0xffff00, 0.8);
-      this.gfx.strokeCircle(0, 0, PLAYER_RADIUS + 1);
+
+    // Star indicator
+    if (this.starGfx) {
+      this.starGfx.clear();
+      this.starGfx.lineStyle(1, 0xffff00, 0.8);
+      this.starGfx.strokeCircle(this.sprite.x, this.sprite.y, this.useFallback ? PLAYER_RADIUS + 1 : 16);
     }
-    this.gfx.x = this.sprite.x;
-    this.gfx.y = this.sprite.y;
-    this.gfx.setDepth(11);
+
+    // Fallback circle rendering
+    if (this.useFallback) {
+      // The circle is already rendered by Phaser; no extra work needed
+    }
   }
 
   moveToward(tx, ty, speedMult) {
@@ -84,7 +155,11 @@ export default class PlayerEntity {
     return this.routeIdx >= this.route.length;
   }
 
-  stop() { this.sprite.body.setVelocity(0, 0); this.currentSpeed = 0; this.isSprinting = false; }
+  stop() {
+    this.sprite.body.setVelocity(0, 0);
+    this.currentSpeed = 0;
+    this.isSprinting = false;
+  }
 
   setRoute(waypoints) { this.route = waypoints; this.routeIdx = 0; }
 
@@ -100,5 +175,21 @@ export default class PlayerEntity {
     return Math.sqrt(dx * dx + dy * dy);
   }
 
-  destroy() { this.sprite.destroy(); this.gfx.destroy(); this.label.destroy(); }
+  // Trigger one-shot animations
+  playCatchAnim() { this.playAnim('catch'); }
+  playTackleAnim() { this.playAnim('tackle'); }
+  playDownAnim() { this.playAnim('down'); }
+  playCelebrateAnim() { this.playAnim('celebrate'); }
+
+  resetAnim() {
+    this.currentAnim = '';
+    this.playAnim('idle');
+  }
+
+  destroy() {
+    this.sprite.destroy();
+    this.label.destroy();
+    this.ring.destroy();
+    if (this.starGfx) this.starGfx.destroy();
+  }
 }
