@@ -17,6 +17,7 @@ import AIController from '../systems/AIController.js';
 import HUD from '../ui/HUD.js';
 import PlayCallUI from '../ui/PlayCallUI.js';
 import MobileControls from '../ui/MobileControls.js';
+import GamepadManager from '../ui/GamepadManager.js';
 
 const State = {
   COIN_TOSS: 'coin_toss',
@@ -90,6 +91,7 @@ export default class GameScene extends Phaser.Scene {
       space: 'SPACE', j: 'J', k: 'K',
       esc: 'ESC',
     });
+    this.gamepad = new GamepadManager();
 
     // Play state
     this.state = State.COIN_TOSS;
@@ -591,6 +593,9 @@ export default class GameScene extends Phaser.Scene {
   update(time, delta) {
     const dt = delta / 1000;
 
+    // Poll gamepad every frame
+    this.gamepad.poll();
+
     // Update all player visuals
     this.homePlayers.forEach(p => p.update(dt));
     this.awayPlayers.forEach(p => p.update(dt));
@@ -636,7 +641,7 @@ export default class GameScene extends Phaser.Scene {
           if (this.humanOnOffense) {
             const isPass = this.currentPlay && this.currentPlay.type === 'pass';
             this.hud.showMessage(isPass ? 'SPACE=snap  then  J=cycle  SPACE=throw' : 'SPACE=snap  then  Arrows=run  K=sprint', 0.05);
-            if (Phaser.Input.Keyboard.JustDown(this.cursors.space) || this.mobileControls.consumeAction()) {
+            if (this._actionJustPressed()) {
               this.snapBall();
             }
           } else {
@@ -678,7 +683,7 @@ export default class GameScene extends Phaser.Scene {
         break;
 
       case State.PAT_CALL:
-        if (Phaser.Input.Keyboard.JustDown(this.cursors.space) || this.mobileControls.consumeAction()) {
+        if (this._actionJustPressed()) {
           const made = Math.random() < 0.94;
           if (made) {
             this.match.scorePAT();
@@ -737,7 +742,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   updateKickoff(dt) {
-    if (!this.kickCharging && (Phaser.Input.Keyboard.JustDown(this.cursors.space) || this.mobileControls.consumeAction())) {
+    if (!this.kickCharging && (this._actionJustPressed())) {
       this.kickCharging = true;
       this.kickPower = 0;
     }
@@ -746,7 +751,7 @@ export default class GameScene extends Phaser.Scene {
       this.kickPower += dt * 1.2;
       if (this.kickPower >= 1) this.kickPower = 1;
 
-      if (!this.cursors.space.isDown && !this.mobileControls.sprintPressed) {
+      if (!this._actionHeld()) {
         // Kick released
         this.executeKickoff();
       }
@@ -775,19 +780,21 @@ export default class GameScene extends Phaser.Scene {
 
   updatePlayCallInput() {
     if (!this.playCallUI.isVisible) return;
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.right) || Phaser.Input.Keyboard.JustDown(this.cursors.d)) {
+    const gp = this.gamepad;
+    // Keyboard + gamepad D-pad/stick navigation
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.right) || Phaser.Input.Keyboard.JustDown(this.cursors.d) || gp.justPressed(15) || gp.cycleRightJustPressed) {
       this.playCallUI.moveSelection(1, 0);
     }
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.left) || Phaser.Input.Keyboard.JustDown(this.cursors.a)) {
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.left) || Phaser.Input.Keyboard.JustDown(this.cursors.a) || gp.justPressed(14) || gp.cycleLeftJustPressed) {
       this.playCallUI.moveSelection(-1, 0);
     }
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.down) || Phaser.Input.Keyboard.JustDown(this.cursors.s)) {
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.down) || Phaser.Input.Keyboard.JustDown(this.cursors.s) || gp.justPressed(13)) {
       this.playCallUI.moveSelection(0, 1);
     }
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.up) || Phaser.Input.Keyboard.JustDown(this.cursors.w)) {
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.up) || Phaser.Input.Keyboard.JustDown(this.cursors.w) || gp.justPressed(12)) {
       this.playCallUI.moveSelection(0, -1);
     }
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.space) || this.mobileControls.consumeAction()) {
+    if (this._actionJustPressed()) {
       this.playCallUI.confirmSelection();
     }
   }
@@ -912,13 +919,23 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  // ── Read directional input (shared by offense + defense) ──
+  // ── Unified input helpers (keyboard + gamepad + mobile) ──
   _readMoveInput() {
     let mx = 0, my = 0;
+    // Keyboard
     if (this.cursors.left.isDown || this.cursors.a.isDown) mx = -1;
     if (this.cursors.right.isDown || this.cursors.d.isDown) mx = 1;
     if (this.cursors.up.isDown || this.cursors.w.isDown) my = -1;
     if (this.cursors.down.isDown || this.cursors.s.isDown) my = 1;
+    // Gamepad (left stick + D-pad)
+    const gp = this.gamepad;
+    if (gp.connected) {
+      if (Math.abs(gp.moveX) > 0.1 || Math.abs(gp.moveY) > 0.1) {
+        mx = gp.moveX;
+        my = gp.moveY;
+      }
+    }
+    // Mobile joystick
     if (this.mobileControls.enabled) {
       if (Math.abs(this.mobileControls.moveX) > 0.1 || Math.abs(this.mobileControls.moveY) > 0.1) {
         mx = this.mobileControls.moveX;
@@ -928,9 +945,31 @@ export default class GameScene extends Phaser.Scene {
     return { mx, my };
   }
 
+  _actionJustPressed() {
+    return Phaser.Input.Keyboard.JustDown(this.cursors.space)
+      || this.gamepad.actionJustPressed
+      || this.mobileControls.consumeAction();
+  }
+
+  _passJustPressed() {
+    return Phaser.Input.Keyboard.JustDown(this.cursors.j)
+      || this.gamepad.passJustPressed
+      || this.mobileControls.consumePass();
+  }
+
+  _sprintDown() {
+    return this.cursors.k.isDown
+      || this.gamepad.sprintDown
+      || this.mobileControls.sprintPressed;
+  }
+
+  _actionHeld() {
+    return this.cursors.space.isDown || this.gamepad.actionDown;
+  }
+
   // ── Apply movement to a controlled player ──
   _applyMove(player, mx, my) {
-    const sprint = this.cursors.k.isDown || this.mobileControls.sprintPressed;
+    const sprint = this._sprintDown();
     player.isSprinting = sprint;
     if (mx !== 0 || my !== 0) {
       const spd = attrToSpeed(player.data.spd) * (sprint ? 1.3 : 1);
@@ -982,12 +1021,12 @@ export default class GameScene extends Phaser.Scene {
       this._applyMove(this.qb, mx, my);
 
       // J / PASS button = cycle receiver target
-      if (Phaser.Input.Keyboard.JustDown(this.cursors.j) || this.mobileControls.consumePass()) {
+      if (this._passJustPressed()) {
         this.selectedReceiverIdx = (this.selectedReceiverIdx + 1) % Math.max(1, this.receivers.length);
       }
 
       // SPACE / ACT button = throw to highlighted receiver
-      if (Phaser.Input.Keyboard.JustDown(this.cursors.space) || this.mobileControls.consumeAction()) {
+      if (this._actionJustPressed()) {
         this.throwPass();
       }
 
@@ -1032,12 +1071,12 @@ export default class GameScene extends Phaser.Scene {
     this._applyMove(controlled, mx, my);
 
     // J / PASS button = switch to defender nearest to the ball carrier
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.j) || this.mobileControls.consumePass()) {
+    if (this._passJustPressed()) {
       this.switchDefender();
     }
 
     // SPACE / ACT button = dive tackle (burst toward ball carrier)
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.space) || this.mobileControls.consumeAction()) {
+    if (this._actionJustPressed()) {
       if (this.ballCarrier) {
         // Lunge toward the ball carrier
         const dx = this.ballCarrier.sprite.x - controlled.sprite.x;
@@ -1090,7 +1129,7 @@ export default class GameScene extends Phaser.Scene {
       const aim = Math.sin(this.fgAngle);
       this.hud.showMessage('AIM: ' + (aim > 0 ? 'RIGHT' : 'LEFT') + ' | Press SPACE', 0.05);
 
-      if (Phaser.Input.Keyboard.JustDown(this.cursors.space) || this.mobileControls.consumeAction()) {
+      if (this._actionJustPressed()) {
         this.fgSwinging = false;
         this.kickCharging = true;
         this.kickPower = 0;
@@ -1101,7 +1140,7 @@ export default class GameScene extends Phaser.Scene {
       if (this.kickPower > 1) this.kickPower = 1;
       this.hud.showMessage('POWER: ' + Math.round(this.kickPower * 100) + '% | Release SPACE', 0.05);
 
-      if (!this.cursors.space.isDown) {
+      if (!this._actionHeld()) {
         // Evaluate FG
         const dist = 100 - this.match.ballYardLine + 17;
         const aimOk = Math.abs(this.fgAimValue) < 0.4;
@@ -1131,10 +1170,10 @@ export default class GameScene extends Phaser.Scene {
       if (this.kickPower > 1) this.kickPower = 1;
       this.hud.showMessage('PUNT POWER: ' + Math.round(this.kickPower * 100) + '%', 0.05);
 
-      if (!this.cursors.space.isDown && !this.mobileControls.sprintPressed) {
+      if (!this._actionHeld()) {
         this.executePunt();
       }
-    } else if (Phaser.Input.Keyboard.JustDown(this.cursors.space) || this.mobileControls.consumeAction()) {
+    } else if (this._actionJustPressed()) {
       this.kickCharging = true;
       this.kickPower = 0;
     }

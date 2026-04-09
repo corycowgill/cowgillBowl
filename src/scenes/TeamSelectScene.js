@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { TEAMS } from '../data/teams.js';
 import SeasonManager from '../systems/SeasonManager.js';
+import GamepadManager from '../ui/GamepadManager.js';
 
 export default class TeamSelectScene extends Phaser.Scene {
   constructor() { super('TeamSelect'); }
@@ -71,11 +72,12 @@ export default class TeamSelectScene extends Phaser.Scene {
 
     this.updateInfo();
 
-    // Keyboard
+    // Keyboard + gamepad
     this.cursors = this.input.keyboard.addKeys({
       left: 'LEFT', right: 'RIGHT', up: 'UP', down: 'DOWN',
       enter: 'SPACE', a: 'A', d: 'D', w: 'W', s: 'S',
     });
+    this.gamepad = new GamepadManager();
   }
 
   updateInfo() {
@@ -113,24 +115,26 @@ export default class TeamSelectScene extends Phaser.Scene {
   }
 
   update() {
+    this.gamepad.poll();
+    const gp = this.gamepad;
     const cols = 4;
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.right) || Phaser.Input.Keyboard.JustDown(this.cursors.d)) {
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.right) || Phaser.Input.Keyboard.JustDown(this.cursors.d) || gp.justPressed(15)) {
       this.selectedIdx = Math.min(this.selectedIdx + 1, TEAMS.length - 1);
       this.updateInfo();
     }
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.left) || Phaser.Input.Keyboard.JustDown(this.cursors.a)) {
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.left) || Phaser.Input.Keyboard.JustDown(this.cursors.a) || gp.justPressed(14)) {
       this.selectedIdx = Math.max(this.selectedIdx - 1, 0);
       this.updateInfo();
     }
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.down) || Phaser.Input.Keyboard.JustDown(this.cursors.s)) {
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.down) || Phaser.Input.Keyboard.JustDown(this.cursors.s) || gp.justPressed(13)) {
       this.selectedIdx = Math.min(this.selectedIdx + cols, TEAMS.length - 1);
       this.updateInfo();
     }
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.up) || Phaser.Input.Keyboard.JustDown(this.cursors.w)) {
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.up) || Phaser.Input.Keyboard.JustDown(this.cursors.w) || gp.justPressed(12)) {
       this.selectedIdx = Math.max(this.selectedIdx - cols, 0);
       this.updateInfo();
     }
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.enter)) {
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.enter) || gp.actionJustPressed) {
       this.selectTeam(this.selectedIdx);
     }
   }

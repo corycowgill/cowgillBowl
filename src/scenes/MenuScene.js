@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import GamepadManager from '../ui/GamepadManager.js';
 
 export default class MenuScene extends Phaser.Scene {
   constructor() { super('Menu'); }
@@ -45,7 +46,11 @@ export default class MenuScene extends Phaser.Scene {
     });
 
     // Controls help
-    this.add.text(w / 2, h - 60, 'Controls: Arrows/WASD move | SPACE snap/tackle | J pass/switch | K sprint', {
+    this.add.text(w / 2, h - 70, 'Keyboard: Arrows move | SPACE snap/tackle | J pass/switch | K sprint', {
+      fontFamily: 'monospace', fontSize: '9px', color: '#555555',
+    }).setOrigin(0.5);
+
+    this.add.text(w / 2, h - 55, 'Xbox Controller: Stick move | A snap/tackle | B pass/switch | X sprint', {
       fontFamily: 'monospace', fontSize: '9px', color: '#555555',
     }).setOrigin(0.5);
 
@@ -60,16 +65,18 @@ export default class MenuScene extends Phaser.Scene {
       up: 'UP', down: 'DOWN', enter: 'SPACE',
       w: 'W', s: 'S',
     });
+    this.gamepad = new GamepadManager();
   }
 
   update() {
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.down) || Phaser.Input.Keyboard.JustDown(this.cursors.s)) {
+    this.gamepad.poll();
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.down) || Phaser.Input.Keyboard.JustDown(this.cursors.s) || this.gamepad.justPressed(13)) {
       this.selectedIdx = Math.min(this.selectedIdx + 1, this.menuOptions.length - 1);
     }
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.up) || Phaser.Input.Keyboard.JustDown(this.cursors.w)) {
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.up) || Phaser.Input.Keyboard.JustDown(this.cursors.w) || this.gamepad.justPressed(12)) {
       this.selectedIdx = Math.max(this.selectedIdx - 1, 0);
     }
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.enter)) {
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.enter) || this.gamepad.actionJustPressed) {
       const opt = this.menuOptions[this.selectedIdx];
       this.scene.start(opt.scene, opt.data);
     }
