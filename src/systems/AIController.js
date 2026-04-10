@@ -83,6 +83,7 @@ export default class AIController {
 
     for (const def of defenders) {
       if (def.controlled) continue; // human-controlled
+      if (def.engaged) continue;    // locked up by a blocker — can't pursue
 
       // Pursuit logic: run toward where the carrier will be
       const predX = targetX + (ballCarrier ? ballCarrier.sprite.body.velocity.x * 0.3 : 0);
@@ -96,14 +97,24 @@ export default class AIController {
   }
 
   // Update AI-controlled offensive players (blocking, routes)
-  updateOffense(offPlayers, play, ball, dt) {
+  updateOffense(offPlayers, defPlayers, play, ball, dt) {
     for (const p of offPlayers) {
       if (p.controlled) continue;
 
-      if (p.isBlocking && p.blockTarget) {
-        // Move toward the block target to shield
-        const bt = p.blockTarget;
-        p.moveToward(bt.sprite.x, bt.sprite.y, 0.7);
+      // Blockers: if engaged, the BlockingSystem holds the position. If not,
+      // hunt the nearest threatening defender to engage.
+      if (p.isBlocker) {
+        if (p.engaged) continue;
+        let nearest = null;
+        let nearDist = Infinity;
+        for (const def of defPlayers) {
+          if (def.engaged) continue;
+          const d = p.distTo(def);
+          if (d < nearDist) { nearDist = d; nearest = def; }
+        }
+        if (nearest) {
+          p.moveToward(nearest.sprite.x, nearest.sprite.y, 0.85);
+        }
         continue;
       }
 

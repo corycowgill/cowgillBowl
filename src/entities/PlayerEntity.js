@@ -17,6 +17,9 @@ export default class PlayerEntity {
     this.routeIdx = 0;
     this.isBlocking = false;
     this.blockTarget = null;
+    this.isBlocker = false;      // true for OL/FB — eligible to engage blocks
+    this.engaged = null;         // the player currently locked up with me (mutual)
+    this.engageTime = 0;
     this.isSprinting = false;
     this.maxSpeed = attrToSpeed(data.spd);
     this.currentSpeed = 0;

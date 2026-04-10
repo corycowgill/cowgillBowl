@@ -85,24 +85,33 @@ export default class PlayExecutor {
     carrier.setRoute(waypoints);
   }
 
-  // Set up blocking assignments for OL
+  // Set up blocking assignments. All OL are blockers; FB/TE/HB join on
+  // run plays if they're not the ball carrier.
   setupBlocking(offAssignments, defAssignments, play) {
     const linemen = ['C', 'LG', 'RG', 'LT', 'RT'];
-    const defLine = ['DT1', 'DT2', 'DE1', 'DE2', 'DT'];
-    
-    linemen.forEach(role => {
+    const helpers = ['FB', 'TE', 'TE1', 'TE2'];
+    const isRun = play && play.type === 'run';
+    const carrierRole = play && play.carrier;
+
+    for (const role of linemen) {
       const blocker = offAssignments[role];
-      if (!blocker) return;
+      if (!blocker) continue;
       blocker.isBlocking = true;
-      // Find nearest defender to block
-      let nearest = null;
-      let nearDist = Infinity;
-      for (const [dRole, def] of Object.entries(defAssignments)) {
-        const d = blocker.distTo(def);
-        if (d < nearDist) { nearDist = d; nearest = def; }
+      blocker.isBlocker = true;
+      blocker.engaged = null;
+      blocker.engageTime = 0;
+    }
+
+    if (isRun) {
+      for (const role of helpers) {
+        const blocker = offAssignments[role];
+        if (!blocker || role === carrierRole) continue;
+        blocker.isBlocking = true;
+        blocker.isBlocker = true;
+        blocker.engaged = null;
+        blocker.engageTime = 0;
       }
-      blocker.blockTarget = nearest;
-    });
+    }
   }
 
   // Check if a pass is catchable

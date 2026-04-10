@@ -14,6 +14,7 @@ import MatchManager from '../systems/MatchManager.js';
 import PlayExecutor from '../systems/PlayExecutor.js';
 import TackleResolver from '../systems/TackleResolver.js';
 import AIController from '../systems/AIController.js';
+import BlockingSystem from '../systems/BlockingSystem.js';
 import HUD from '../ui/HUD.js';
 import PlayCallUI from '../ui/PlayCallUI.js';
 import MobileControls from '../ui/MobileControls.js';
@@ -54,6 +55,7 @@ export default class GameScene extends Phaser.Scene {
     this.executor = new PlayExecutor(this);
     this.tackleResolver = new TackleResolver();
     this.ai = new AIController();
+    this.blocking = new BlockingSystem();
 
     // Playbooks
     this.homePlaybook = buildPlaybook(this.homeTeam.abbr);
@@ -292,9 +294,10 @@ export default class GameScene extends Phaser.Scene {
     this.selectedReceiverIdx = 0;
     this.passTarget = null;
 
-    // Reset all player animations for new play
+    // Reset all player animations and blocking state for new play
     this.homePlayers.forEach(p => p.resetAnim());
     this.awayPlayers.forEach(p => p.resetAnim());
+    this.blocking.reset([...this.homePlayers, ...this.awayPlayers]);
 
     const goingRight = this.match.offenseGoingRight;
 
@@ -480,9 +483,10 @@ export default class GameScene extends Phaser.Scene {
     this.stateTimer = 2;
     this.match.isClockRunning = false;
 
-    // Stop all players and trigger down animation
+    // Stop all players, clear blocks, trigger down animation
     this.homePlayers.forEach(p => { p.stop(); p.setControlled(false); });
     this.awayPlayers.forEach(p => { p.stop(); p.setControlled(false); });
+    this.blocking.reset([...this.homePlayers, ...this.awayPlayers]);
     if (this._recvIndicator) this._recvIndicator.clear();
     if (this.ballCarrier) this.ballCarrier.playDownAnim();
 
@@ -814,11 +818,15 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // AI manages non-controlled offense players
-    this.ai.updateOffense(this.offensePlayers, this.currentPlay, this.ball, dt);
+    this.ai.updateOffense(this.offensePlayers, this.defensePlayers, this.currentPlay, this.ball, dt);
 
-    // Check tackles on ball carrier
+    // Resolve blocking engagements (locks up blockers and defenders)
+    this.blocking.update(this.offensePlayers, this.defensePlayers, dt);
+
+    // Check tackles on ball carrier — engaged defenders can't tackle
     if (this.ballCarrier) {
-      const results = this.tackleResolver.checkProximity(this.ballCarrier, this.defensePlayers);
+      const freeDefenders = this.defensePlayers.filter(d => !d.engaged);
+      const results = this.tackleResolver.checkProximity(this.ballCarrier, freeDefenders);
       for (const r of results) {
         if (r.result === 'fumble') {
           this.ball.makeFumble();
@@ -898,7 +906,8 @@ export default class GameScene extends Phaser.Scene {
 
     // If QB hasn't thrown and is sacked
     if (!this.passThrown && this.currentPlay && this.currentPlay.type === 'pass' && this.ballCarrier === this.qb) {
-      const results = this.tackleResolver.checkProximity(this.qb, this.defensePlayers);
+      const freeRushers = this.defensePlayers.filter(d => !d.engaged);
+      const results = this.tackleResolver.checkProximity(this.qb, freeRushers);
       for (const r of results) {
         if (r.result === 'tackle' || r.result === 'stumble' || r.result === 'fumble') {
           const yardsGained = this.executor.pxToYardsFromLOS(
