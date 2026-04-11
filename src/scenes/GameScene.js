@@ -19,6 +19,7 @@ import HUD from '../ui/HUD.js';
 import PlayCallUI from '../ui/PlayCallUI.js';
 import MobileControls from '../ui/MobileControls.js';
 import GamepadManager from '../ui/GamepadManager.js';
+import SoundManager from '../ui/SoundManager.js';
 
 const State = {
   COIN_TOSS: 'coin_toss',
@@ -98,6 +99,7 @@ export default class GameScene extends Phaser.Scene {
       esc: 'ESC',
     });
     this.gamepad = new GamepadManager();
+    this.sound_mgr = new SoundManager();
 
     // Play state
     this.state = State.COIN_TOSS;
@@ -257,11 +259,16 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
+    // 4th down decision for human offense
+    if (this.humanOnOffense && this.match.down === 4) {
+      this._show4thDownMenu();
+      return;
+    }
+
     if (this.humanOnOffense) {
       // Human picks offense
       this.playCallUI.show(this.offensePlaybook.offense, false, (play) => {
         this.currentPlay = play;
-        // AI picks defense
         this.currentDefPlay = this.ai.pickDefensivePlay(this.defensePlaybook, this.match);
         this.startPreSnap();
       });
@@ -299,6 +306,7 @@ export default class GameScene extends Phaser.Scene {
   snapBall() {
     this.state = State.LIVE_PLAY;
     this.match.isClockRunning = true;
+    this.sound_mgr.snap();
     this.passThrown = false;
     this.selectedReceiverIdx = 0;
     this.passTarget = null;
@@ -440,6 +448,7 @@ export default class GameScene extends Phaser.Scene {
   executePunt() {
     if (this._kickMeterGfx) this._kickMeterGfx.clear();
     this.kickCharging = false;
+    this.sound_mgr.kick();
 
     const puntYards = 20 + Math.floor(this.kickPower * 45);
     const oldYard = this.match.ballYardLine;
@@ -565,6 +574,7 @@ export default class GameScene extends Phaser.Scene {
       this.hud.showMessage(message, 2.5);
       this._flashScreen(0xffff00, 400);
       this._shakeScreen(0.008, 300);
+      this.sound_mgr.touchdown();
       this.stateTimer = 3;
       this.afterTD = true;
       if (this.ballCarrier) this.ballCarrier.playCelebrateAnim();
@@ -589,6 +599,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     if (result === 'first_down') {
+      this.sound_mgr.firstDown();
       message += ' — FIRST DOWN!';
     }
 
@@ -601,6 +612,7 @@ export default class GameScene extends Phaser.Scene {
     this.hud.showMessage('INTERCEPTED by #' + interceptor.data.num + '!', 2);
     this._flashScreen(0xff0000, 300);
     this._shakeScreen(0.006, 200);
+    this.sound_mgr.turnover();
     this.match.stats[this.match.possession].ints++;
     this.match.changePossession();
     this.field.clearOverlays();
@@ -659,6 +671,13 @@ export default class GameScene extends Phaser.Scene {
 
     // Poll gamepad every frame
     this.gamepad.poll();
+
+    // ESC toggles stats overlay
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.esc) || this.gamepad.startJustPressed) {
+      this._toggleStats();
+      if (this._statsUI) return; // paused while stats are showing
+    }
+    if (this._statsUI) return; // block all updates while stats overlay is open
 
     // Update all player visuals
     this.homePlayers.forEach(p => p.update(dt));
@@ -857,6 +876,7 @@ export default class GameScene extends Phaser.Scene {
   executeKickoff() {
     this._kickMeterGfx.clear();
     this.kickCharging = false;
+    this.sound_mgr.kick();
 
     const goingRight = this.match.offenseGoingRight;
     const kickYards = 25 + Math.floor(this.kickPower * 50);
@@ -933,6 +953,7 @@ export default class GameScene extends Phaser.Scene {
       this.hud.showMessage('KICK RETURN TOUCHDOWN!', 2.5);
       this._flashScreen(0xffff00, 400);
       this._shakeScreen(0.008, 300);
+      this.sound_mgr.touchdown();
       this.ballCarrier.playCelebrateAnim();
       this.homePlayers.forEach(p => p.stop());
       this.awayPlayers.forEach(p => p.stop());
@@ -1024,6 +1045,8 @@ export default class GameScene extends Phaser.Scene {
         if (r.result === 'tackle' || r.result === 'stumble') {
           r.defender.playTackleAnim();
           this._shakeScreen(0.004, 120);
+          this.sound_mgr.hit(0.6);
+          this.sound_mgr.whistle();
           const yardsGained = this.executor.pxToYardsFromLOS(
             this.ballCarrier.sprite.x, this.match.ballYardLine, goingRight
           );
@@ -1050,11 +1073,21 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
-    // Check pass completion
+    // Check pass completion — draw ball trail while in air
     if (this.passThrown && this.ball.inAir) {
-      // Check if ball arrived at target area
-      // nothing to do while in air
+      if (!this._ballTrail) {
+        this._ballTrail = this.add.graphics().setDepth(4);
+      }
+      this._ballTrail.clear();
+      this._ballTrail.lineStyle(1.5, 0xffffff, 0.3);
+      if (this.passTarget) {
+        this._ballTrail.lineBetween(
+          this.ball.sprite.x, this.ball.sprite.y,
+          this.passTarget.sprite.x, this.passTarget.sprite.y
+        );
+      }
     } else if (this.passThrown && !this.ball.inAir && !this.ball.held) {
+      if (this._ballTrail) this._ballTrail.clear();
       // Ball has arrived at target
       const catchResult = this.executor.evaluateCatch(
         this.passTarget, this.ball, this.defensePlayers
@@ -1082,6 +1115,8 @@ export default class GameScene extends Phaser.Scene {
         this.ball.airVx = 0;
         this.ball.airVy = 15; // gentle drop
         this.hud.showMessage('INCOMPLETE!', 1.5);
+        this.sound_mgr.incomplete();
+        this.sound_mgr.whistle();
         this.match.isClockRunning = false; // NFL: clock stops on incompletion
         this.state = State.PLAY_DEAD;
         this.stateTimer = 1.5;
@@ -1113,6 +1148,8 @@ export default class GameScene extends Phaser.Scene {
             this.handleFumble(this.qb);
           } else {
             this._shakeScreen(0.007, 200);
+            this.sound_mgr.hit(0.9);
+            this.sound_mgr.whistle();
             this.handlePlayDead(yardsGained, 'SACKED!');
           }
           return;
@@ -1252,8 +1289,20 @@ export default class GameScene extends Phaser.Scene {
       if (mx !== 0 || my !== 0) {
         this._applyMove(this.ballCarrier, mx, my);
       } else {
-        // If no input, auto-run the designed play route
         this.ballCarrier.followRoute();
+      }
+
+      // JUKE MOVE: press J/B while running to do a quick lateral cut
+      if (this._passJustPressed() && this.ballCarrier.currentSpeed > 10) {
+        const bc = this.ballCarrier;
+        const jukeDir = my > 0 ? 1 : my < 0 ? -1 : (Math.random() < 0.5 ? 1 : -1);
+        const jukeSpd = attrToSpeed(bc.data.agi) * 1.5;
+        bc.sprite.body.setVelocity(
+          bc.sprite.body.velocity.x * 0.6,
+          jukeDir * jukeSpd
+        );
+        this.sound_mgr.click();
+        this._jukeCooldown = 0.4;
       }
     }
 
@@ -1376,6 +1425,7 @@ export default class GameScene extends Phaser.Scene {
           this.match.scoreFieldGoal();
           this.hud.showMessage('FIELD GOAL IS GOOD! ' + dist + ' yards!', 2.5);
           this._flashScreen(0x00ff00, 300);
+          this.sound_mgr.fieldGoalGood();
           this.afterTDKickoff = true;
         } else {
           // NFL: defense takes over at the spot of the kick
@@ -1384,6 +1434,127 @@ export default class GameScene extends Phaser.Scene {
           this.afterMissedFG = true;
         }
       }
+    }
+  }
+
+  // ── Pause / Stats Overlay ──
+  _toggleStats() {
+    if (this._statsUI) {
+      this._statsUI.destroy();
+      this._statsUI = null;
+      return;
+    }
+    const w = 960, h = 540;
+    this._statsUI = this.add.container(0, 0).setScrollFactor(0).setDepth(250);
+    this._statsUI.add(this.add.rectangle(w / 2, h / 2, w, h, 0x000000, 0.85));
+
+    this._statsUI.add(this.add.text(w / 2, 30, 'GAME STATS', {
+      fontFamily: 'monospace', fontSize: '18px', color: '#ffcc00', fontStyle: 'bold',
+    }).setOrigin(0.5));
+
+    const m = this.match;
+    const col1 = w / 2 - 100, col2 = w / 2 + 100;
+    const ss = { fontFamily: 'monospace', fontSize: '11px', color: '#cccccc' };
+    const sh = { fontFamily: 'monospace', fontSize: '13px', color: '#ffffff', fontStyle: 'bold' };
+
+    this._statsUI.add(this.add.text(col1, 55, this.homeTeam.abbr, sh).setOrigin(0.5, 0));
+    this._statsUI.add(this.add.text(col2, 55, this.awayTeam.abbr, sh).setOrigin(0.5, 0));
+
+    const stats = [
+      ['Score', m.homeScore, m.awayScore],
+      ['Pass Yards', m.stats.home.passYds, m.stats.away.passYds],
+      ['Rush Yards', m.stats.home.rushYds, m.stats.away.rushYds],
+      ['Pass TDs', m.stats.home.passTD, m.stats.away.passTD],
+      ['Rush TDs', m.stats.home.rushTD, m.stats.away.rushTD],
+      ['INTs Thrown', m.stats.home.ints, m.stats.away.ints],
+      ['Fumbles', m.stats.home.fumbles, m.stats.away.fumbles],
+      ['Sacks', m.stats.home.sacks, m.stats.away.sacks],
+      ['1st Downs', m.stats.home.firstDowns, m.stats.away.firstDowns],
+    ];
+    stats.forEach(([label, hv, av], i) => {
+      const y = 80 + i * 20;
+      this._statsUI.add(this.add.text(col1, y, '' + hv, ss).setOrigin(0.5, 0));
+      this._statsUI.add(this.add.text(w / 2, y, label, { ...ss, color: '#888888' }).setOrigin(0.5, 0));
+      this._statsUI.add(this.add.text(col2, y, '' + av, ss).setOrigin(0.5, 0));
+    });
+
+    this._statsUI.add(this.add.text(w / 2, h - 30, 'Press ESC to close', {
+      fontFamily: 'monospace', fontSize: '10px', color: '#555555',
+    }).setOrigin(0.5));
+  }
+
+  // ── 4th Down Decision UI ──
+  _show4thDownMenu() {
+    const w = 960, h = 540;
+    this._4thUI = this.add.container(0, 0).setScrollFactor(0).setDepth(160);
+
+    const bg = this.add.rectangle(w / 2, h / 2, w, h, 0x000000, 0.7);
+    this._4thUI.add(bg);
+
+    const title = this.add.text(w / 2, h * 0.25, '4TH DOWN — WHAT DO YOU WANT TO DO?', {
+      fontFamily: 'monospace', fontSize: '16px', color: '#ffcc00', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    this._4thUI.add(title);
+
+    const dist = this.match.getDownText();
+    const pos = this.match.getFieldPositionText();
+    const info = this.add.text(w / 2, h * 0.32, `${dist}  |  ${pos}`, {
+      fontFamily: 'monospace', fontSize: '12px', color: '#aaaaaa',
+    }).setOrigin(0.5);
+    this._4thUI.add(info);
+
+    const fgDist = 100 - this.match.ballYardLine + 17;
+    const canFG = fgDist <= 55;
+
+    const options = [
+      { label: 'GO FOR IT', color: 0x994400, action: () => this._4thDownChoice('go') },
+      { label: 'PUNT', color: 0x224466, action: () => this._4thDownChoice('punt') },
+    ];
+    if (canFG) {
+      options.push({
+        label: `FIELD GOAL (${fgDist} yds)`,
+        color: 0x226622,
+        action: () => this._4thDownChoice('fg'),
+      });
+    }
+
+    options.forEach((opt, i) => {
+      const bx = w / 2 + (i - (options.length - 1) / 2) * 170;
+      const by = h * 0.48;
+      const btn = this.add.rectangle(bx, by, 155, 45, opt.color, 1)
+        .setStrokeStyle(2, 0x888888)
+        .setInteractive({ useHandCursor: true });
+      const txt = this.add.text(bx, by, opt.label, {
+        fontFamily: 'monospace', fontSize: '11px', color: '#ffffff', fontStyle: 'bold',
+      }).setOrigin(0.5);
+      btn.on('pointerdown', opt.action);
+      this._4thUI.add([btn, txt]);
+    });
+
+    // Keyboard shortcuts
+    this._4thKeys = {
+      go: this.input.keyboard.once('keydown-ONE', () => this._4thDownChoice('go')),
+      punt: this.input.keyboard.once('keydown-TWO', () => this._4thDownChoice('punt')),
+    };
+    if (canFG) {
+      this._4thKeys.fg = this.input.keyboard.once('keydown-THREE', () => this._4thDownChoice('fg'));
+    }
+  }
+
+  _4thDownChoice(choice) {
+    if (this._4thUI) { this._4thUI.destroy(); this._4thUI = null; }
+    this.sound_mgr.click();
+    if (choice === 'punt') {
+      this.startPunt();
+    } else if (choice === 'fg') {
+      this.startFGAim();
+    } else {
+      // Go for it — show normal play call
+      this.playCallUI.show(this.offensePlaybook.offense, false, (play) => {
+        this.currentPlay = play;
+        this.currentDefPlay = this.ai.pickDefensivePlay(this.defensePlaybook, this.match);
+        this.startPreSnap();
+      });
     }
   }
 
