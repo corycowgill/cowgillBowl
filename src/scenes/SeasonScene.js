@@ -26,28 +26,48 @@ export default class SeasonScene extends Phaser.Scene {
       return;
     }
 
+    // Dark gradient background
+    const bgGfx = this.add.graphics();
+    for (let i = 0; i < h; i++) {
+      const t = i / h;
+      bgGfx.fillStyle((Math.floor(8 + t * 8) << 16) | (Math.floor(8 + t * 12) << 8) | Math.floor(14 + t * 10), 1);
+      bgGfx.fillRect(0, i, w, 1);
+    }
+
     // Header
-    this.add.text(w / 2, 20, 'COWGILL BOWL — SEASON MODE', {
-      fontFamily: 'monospace', fontSize: '18px', color: '#ffcc00', fontStyle: 'bold',
+    this.add.text(w / 2, 18, 'COWGILL BOWL — SEASON', {
+      fontFamily: 'monospace', fontSize: '16px', color: '#ffcc00', fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5);
 
-    this.add.text(w / 2, 42, 'Week ' + mgr.week + ' of ' + mgr.totalWeeks, {
-      fontFamily: 'monospace', fontSize: '12px', color: '#888888',
-    }).setOrigin(0.5);
+    // Week progress bar
+    const barW = 200, barH = 6, barX = w / 2 - barW / 2, barY = 36;
+    this.add.rectangle(barX + barW / 2, barY, barW, barH, 0x333333);
+    const progress = (mgr.week - 1) / mgr.totalWeeks;
+    if (progress > 0) {
+      this.add.rectangle(barX + (barW * progress) / 2, barY, barW * progress, barH, 0xffcc00);
+    }
+    this.add.text(w / 2, barY + 8, 'Week ' + mgr.week + ' of ' + mgr.totalWeeks, {
+      fontFamily: 'monospace', fontSize: '9px', color: '#888888',
+    }).setOrigin(0.5, 0);
 
-    // Standings (left side)
-    this.add.text(20, 65, 'STANDINGS', {
-      fontFamily: 'monospace', fontSize: '13px', color: '#aaaaaa', fontStyle: 'bold',
+    // Standings (left side) with team color bars
+    this.add.text(20, 60, 'STANDINGS', {
+      fontFamily: 'monospace', fontSize: '11px', color: '#aaaaaa', fontStyle: 'bold',
     });
 
     const standings = mgr.getStandingsSorted();
-    const ss = { fontFamily: 'monospace', fontSize: '10px', color: '#cccccc' };
+    const ss = { fontFamily: 'monospace', fontSize: '9px', color: '#cccccc' };
     standings.forEach((s, i) => {
       const team = TEAM_MAP[s.abbr];
       const isPlayer = s.abbr === mgr.playerTeam;
+      const y = 76 + i * 17;
+      // Team color bar
+      this.add.rectangle(16, y + 4, 6, 12, team ? team.colors.primary : 0x888888, 0.8);
       const color = isPlayer ? '#ffcc00' : '#cccccc';
-      this.add.text(20, 82 + i * 16, `${i + 1}. ${s.abbr} ${s.wins}-${s.losses} (PF:${s.pf} PA:${s.pa})`, {
-        ...ss, color,
+      const fontStyle = isPlayer ? 'bold' : 'normal';
+      this.add.text(24, y, `${i + 1}. ${s.abbr}  ${s.wins}-${s.losses}  PF:${s.pf}  PA:${s.pa}`, {
+        ...ss, color, fontStyle,
       });
     });
 
@@ -57,19 +77,29 @@ export default class SeasonScene extends Phaser.Scene {
       const homeTeam = TEAM_MAP[game.home];
       const awayTeam = TEAM_MAP[game.away];
 
-      this.add.text(w / 2 + 40, 65, 'THIS WEEK', {
-        fontFamily: 'monospace', fontSize: '13px', color: '#aaaaaa', fontStyle: 'bold',
+      this.add.text(w / 2 + 40, 60, 'THIS WEEK', {
+        fontFamily: 'monospace', fontSize: '11px', color: '#aaaaaa', fontStyle: 'bold',
       });
 
-      this.add.text(w / 2 + 40, 90, `${homeTeam.city} ${homeTeam.name}`, {
-        fontFamily: 'monospace', fontSize: '14px', color: '#ffffff', fontStyle: 'bold',
-      });
-      this.add.text(w / 2 + 40, 108, 'vs', {
-        fontFamily: 'monospace', fontSize: '11px', color: '#666666',
-      });
-      this.add.text(w / 2 + 40, 124, `${awayTeam.city} ${awayTeam.name}`, {
-        fontFamily: 'monospace', fontSize: '14px', color: '#ffffff', fontStyle: 'bold',
-      });
+      // Home team card
+      this.add.rectangle(w / 2 + 120, 85, 160, 25, homeTeam.colors.primary, 0.4)
+        .setStrokeStyle(1, 0x444444);
+      this.add.text(w / 2 + 120, 85, `${homeTeam.city} ${homeTeam.name}`, {
+        fontFamily: 'monospace', fontSize: '11px', color: '#ffffff', fontStyle: 'bold',
+        stroke: '#000000', strokeThickness: 1,
+      }).setOrigin(0.5);
+
+      this.add.text(w / 2 + 120, 104, 'vs', {
+        fontFamily: 'monospace', fontSize: '9px', color: '#666666',
+      }).setOrigin(0.5);
+
+      // Away team card
+      this.add.rectangle(w / 2 + 120, 120, 160, 25, awayTeam.colors.primary, 0.4)
+        .setStrokeStyle(1, 0x444444);
+      this.add.text(w / 2 + 120, 120, `${awayTeam.city} ${awayTeam.name}`, {
+        fontFamily: 'monospace', fontSize: '11px', color: '#ffffff', fontStyle: 'bold',
+        stroke: '#000000', strokeThickness: 1,
+      }).setOrigin(0.5);
 
       // Play button
       const playBtn = this.add.rectangle(w / 2 + 120, 170, 180, 45, 0x224422)

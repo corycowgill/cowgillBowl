@@ -13,7 +13,12 @@ export default class PlayCallUI {
     this.onSelect = null;
     this.isDefense = false;
     this.titleText = null;
+    this.teamColor = 0x333333;
     this.headerText = null;
+  }
+
+  setTeamColor(color) {
+    this.teamColor = color || 0x333333;
   }
 
   show(plays, isDefense, onSelect) {
@@ -28,14 +33,18 @@ export default class PlayCallUI {
     const w = cam.width;
     const h = cam.height;
 
-    // Backdrop
-    const backdrop = this.scene.add.rectangle(w / 2, h / 2, w, h, 0x000000, 0.7);
+    // Backdrop with team color tint
+    const backdrop = this.scene.add.rectangle(w / 2, h / 2, w, h, 0x000000, 0.75);
     this.container.add(backdrop);
+    // Team color accent bar at top
+    const accentBar = this.scene.add.rectangle(w / 2, 52, w - 40, 4, this.teamColor, 0.6);
+    this.container.add(accentBar);
 
     // Title
     const title = isDefense ? 'DEFENSIVE CALL' : 'OFFENSIVE PLAY';
-    this.titleText = this.scene.add.text(w / 2, 60, title, {
-      fontFamily: 'monospace', fontSize: '20px', color: '#ffffff', fontStyle: 'bold',
+    this.titleText = this.scene.add.text(w / 2, 62, title, {
+      fontFamily: 'monospace', fontSize: '18px', color: '#ffffff', fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5);
     this.container.add(this.titleText);
 
@@ -103,11 +112,13 @@ export default class PlayCallUI {
   updateSelection() {
     this.playButtons.forEach((btn, i) => {
       if (i === this.selectedIndex) {
-        btn.bg.setStrokeStyle(2, 0x00ff00);
-        btn.bg.setFillStyle(0x445544);
+        btn.bg.setStrokeStyle(2, this.teamColor || 0x00ff00);
+        btn.bg.setFillStyle(0x3a3a3a);
+        btn.bg.setAlpha(1);
       } else {
-        btn.bg.setStrokeStyle(2, 0x666666);
-        btn.bg.setFillStyle(0x333333);
+        btn.bg.setStrokeStyle(1, 0x555555);
+        btn.bg.setFillStyle(0x222222);
+        btn.bg.setAlpha(0.85);
       }
     });
   }

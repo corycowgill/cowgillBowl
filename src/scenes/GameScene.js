@@ -269,16 +269,17 @@ export default class GameScene extends Phaser.Scene {
     }
 
     if (this.humanOnOffense) {
-      // Human picks offense
+      const humanTeam = this.humanSide === 'home' ? this.homeTeam : this.awayTeam;
+      this.playCallUI.setTeamColor(humanTeam.colors.primary);
       this.playCallUI.show(this.offensePlaybook.offense, false, (play) => {
         this.currentPlay = play;
         this.currentDefPlay = this.ai.pickDefensivePlay(this.defensePlaybook, this.match);
         this.startPreSnap();
       });
     } else {
-      // AI picks offense
+      const humanTeam = this.humanSide === 'home' ? this.homeTeam : this.awayTeam;
+      this.playCallUI.setTeamColor(humanTeam.colors.primary);
       this.currentPlay = this.ai.pickOffensivePlay(this.offensePlaybook, this.match);
-      // Human picks defense
       this.playCallUI.show(this.defensePlaybook.defense, true, (defPlay) => {
         this.currentDefPlay = defPlay;
         this.startPreSnap();

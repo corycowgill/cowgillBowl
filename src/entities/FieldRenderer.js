@@ -132,6 +132,30 @@ export default class FieldRenderer {
     g.lineStyle(2, LINE_COLOR, 0.9);
     g.strokeRect(fl, ft, totalW, fw);
 
+    // ── Midfield logo (50-yard line) ──
+    const midX = fl + ez + 50 * YARD_PX;
+    const midY = ft + fw / 2;
+    // Circle emblem
+    g.lineStyle(1.5, 0xffffff, 0.12);
+    g.strokeCircle(midX, midY, 30);
+    g.strokeCircle(midX, midY, 22);
+    // "CB" monogram
+    this._extras.push(
+      this.scene.add.text(midX, midY, 'CB', {
+        fontFamily: 'monospace', fontSize: '16px', color: '#ffffff',
+        fontStyle: 'bold',
+      }).setOrigin(0.5).setAlpha(0.1)
+    );
+    // Diamond accent
+    g.lineStyle(1, 0xffcc00, 0.08);
+    g.strokePoints([
+      { x: midX, y: midY - 18 },
+      { x: midX + 14, y: midY },
+      { x: midX, y: midY + 18 },
+      { x: midX - 14, y: midY },
+      { x: midX, y: midY - 18 },
+    ], true, false);
+
     // ── 5-yard lines ──
     g.lineStyle(1, LINE_COLOR, 0.5);
     for (let y = 5; y < 100; y += 5) {
