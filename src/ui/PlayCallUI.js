@@ -1,3 +1,5 @@
+import { getRouteWaypoints } from '../data/plays.js';
+
 export default class PlayCallUI {
   constructor(scene) {
     this.scene = scene;
@@ -61,12 +63,20 @@ export default class PlayCallUI {
 
       const bg = this.scene.add.rectangle(x, y, btnW, btnH, 0x333333, 1)
         .setStrokeStyle(2, 0x666666);
-      const nameText = this.scene.add.text(x, y - 8, play.name, {
-        fontFamily: 'monospace', fontSize: '11px', color: '#ffffff', fontStyle: 'bold',
+
+      // Mini route diagram for offensive plays
+      const routeGfx = this.scene.add.graphics();
+      if (!isDefense && play.type) {
+        this._drawMiniPlay(routeGfx, x, y, play, btnW, btnH);
+      }
+
+      const nameText = this.scene.add.text(x, y - 12, play.name, {
+        fontFamily: 'monospace', fontSize: '10px', color: '#ffffff', fontStyle: 'bold',
+        stroke: '#000000', strokeThickness: 2,
       }).setOrigin(0.5);
       const typeLabel = play.type || play.style || '';
-      const typeText = this.scene.add.text(x, y + 10, typeLabel.toUpperCase(), {
-        fontFamily: 'monospace', fontSize: '9px', color: '#aaaaaa',
+      const typeText = this.scene.add.text(x, y + 16, typeLabel.toUpperCase(), {
+        fontFamily: 'monospace', fontSize: '8px', color: '#aaaaaa',
       }).setOrigin(0.5);
 
       // Click/tap support
@@ -76,8 +86,8 @@ export default class PlayCallUI {
         this.confirmSelection();
       });
 
-      this.container.add([bg, nameText, typeText]);
-      this.playButtons.push({ bg, nameText, typeText });
+      this.container.add([bg, routeGfx, nameText, typeText]);
+      this.playButtons.push({ bg, nameText, typeText, routeGfx });
     });
 
     this.updateSelection();
@@ -123,6 +133,67 @@ export default class PlayCallUI {
       const play = this.plays[this.selectedIndex];
       this.hide();
       this.onSelect(play);
+    }
+  }
+
+  // Draw a tiny route diagram inside the play button
+  _drawMiniPlay(gfx, cx, cy, play, bw, bh) {
+    const s = 1.2; // scale
+    const losX = cx - bw * 0.15;
+    // LOS line
+    gfx.lineStyle(1, 0x666666, 0.5);
+    gfx.lineBetween(losX, cy - bh * 0.35, losX, cy + bh * 0.35);
+
+    // OL dots
+    for (let i = -2; i <= 2; i++) {
+      gfx.fillStyle(0x888888, 0.5);
+      gfx.fillCircle(losX, cy + i * 5, 1.5);
+    }
+
+    if (play.type === 'run' && play.runPath && play.runPath.length > 0) {
+      // Draw run path as an arrow
+      gfx.lineStyle(1.5, 0x00cc00, 0.7);
+      let px = losX - 6, py = cy;
+      gfx.beginPath();
+      gfx.moveTo(px, py);
+      play.runPath.forEach(([dx, dy]) => {
+        px = px + dx * s;
+        py = py + dy * s;
+        gfx.lineTo(px, py);
+      });
+      gfx.strokePath();
+      gfx.fillStyle(0x00cc00, 0.8);
+      gfx.fillCircle(px, py, 2);
+    }
+
+    if (play.type === 'pass' && play.routes) {
+      const routeColors = [0x00aaff, 0xff8800, 0x00ff88, 0xff44ff];
+      let ri = 0;
+      for (const [role, routeKey] of Object.entries(play.routes)) {
+        const wps = getRouteWaypoints(routeKey);
+        const col = routeColors[ri % routeColors.length];
+        ri++;
+        // Start position depends on role
+        let sx = losX, sy = cy;
+        if (role.includes('WR') || role.includes('TE')) {
+          sy = cy + (ri % 2 === 0 ? -14 : 14);
+        } else {
+          sy = cy + (ri % 2 === 0 ? -5 : 5);
+          sx = losX - 8;
+        }
+        gfx.lineStyle(1, col, 0.6);
+        gfx.beginPath();
+        gfx.moveTo(sx, sy);
+        let ex = sx, ey = sy;
+        wps.forEach(([dx, dy]) => {
+          ex = ex + dx * s;
+          ey = ey + dy * s;
+          gfx.lineTo(ex, ey);
+        });
+        gfx.strokePath();
+        gfx.fillStyle(col, 0.8);
+        gfx.fillCircle(ex, ey, 1.5);
+      }
     }
   }
 

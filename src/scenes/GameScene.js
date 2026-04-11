@@ -75,6 +75,7 @@ export default class GameScene extends Phaser.Scene {
 
     // Field
     this.field = new FieldRenderer(this);
+    this.field.setTeams(this.homeTeam, this.awayTeam, this.match.homeGoingRight);
 
     // Football
     this.ball = new Football(this);
@@ -562,9 +563,10 @@ export default class GameScene extends Phaser.Scene {
       }
       message = 'TOUCHDOWN ' + team.city + '!';
       this.hud.showMessage(message, 2.5);
+      this._flashScreen(0xffff00, 400);
+      this._shakeScreen(0.008, 300);
       this.stateTimer = 3;
       this.afterTD = true;
-      // Celebrate animation for the scorer
       if (this.ballCarrier) this.ballCarrier.playCelebrateAnim();
       this.offensePlayers.forEach(p => p.playCelebrateAnim());
       return;
@@ -597,6 +599,8 @@ export default class GameScene extends Phaser.Scene {
 
   handleInterception(interceptor) {
     this.hud.showMessage('INTERCEPTED by #' + interceptor.data.num + '!', 2);
+    this._flashScreen(0xff0000, 300);
+    this._shakeScreen(0.006, 200);
     this.match.stats[this.match.possession].ints++;
     this.match.changePossession();
     this.field.clearOverlays();
@@ -927,6 +931,8 @@ export default class GameScene extends Phaser.Scene {
     if (this.executor.isInEndZone(this.ballCarrier.sprite.x, goingRight)) {
       this.match.scoreTouchdown();
       this.hud.showMessage('KICK RETURN TOUCHDOWN!', 2.5);
+      this._flashScreen(0xffff00, 400);
+      this._shakeScreen(0.008, 300);
       this.ballCarrier.playCelebrateAnim();
       this.homePlayers.forEach(p => p.stop());
       this.awayPlayers.forEach(p => p.stop());
@@ -1017,6 +1023,7 @@ export default class GameScene extends Phaser.Scene {
         }
         if (r.result === 'tackle' || r.result === 'stumble') {
           r.defender.playTackleAnim();
+          this._shakeScreen(0.004, 120);
           const yardsGained = this.executor.pxToYardsFromLOS(
             this.ballCarrier.sprite.x, this.match.ballYardLine, goingRight
           );
@@ -1070,8 +1077,12 @@ export default class GameScene extends Phaser.Scene {
         this.handleInterception(catchResult.interceptor);
         return;
       } else {
-        // Incomplete
+        // Incomplete — ball drops to ground
+        this.ball.makeFumble(); // reuse loose-ball bounce for visual
+        this.ball.airVx = 0;
+        this.ball.airVy = 15; // gentle drop
         this.hud.showMessage('INCOMPLETE!', 1.5);
+        this.match.isClockRunning = false; // NFL: clock stops on incompletion
         this.state = State.PLAY_DEAD;
         this.stateTimer = 1.5;
         this.match.down++;
@@ -1082,6 +1093,7 @@ export default class GameScene extends Phaser.Scene {
         }
         this.homePlayers.forEach(p => { p.stop(); p.setControlled(false); });
         this.awayPlayers.forEach(p => { p.stop(); p.setControlled(false); });
+        this.blocking.reset([...this.homePlayers, ...this.awayPlayers]);
         return;
       }
     }
@@ -1100,6 +1112,7 @@ export default class GameScene extends Phaser.Scene {
             this.ball.makeFumble();
             this.handleFumble(this.qb);
           } else {
+            this._shakeScreen(0.007, 200);
             this.handlePlayDead(yardsGained, 'SACKED!');
           }
           return;
@@ -1313,10 +1326,26 @@ export default class GameScene extends Phaser.Scene {
   }
 
   updateFGAim(dt) {
+    this._kickMeterGfx = this._kickMeterGfx || this.add.graphics().setScrollFactor(0).setDepth(200);
+
     if (this.fgSwinging) {
       this.fgAngle += dt * 3;
       const aim = Math.sin(this.fgAngle);
-      this.hud.showMessage('AIM: ' + (aim > 0 ? 'RIGHT' : 'LEFT') + ' | Press SPACE', 0.05);
+      // Draw aim indicator — a moving arrow/bar
+      this._kickMeterGfx.clear();
+      const cx = 480, cy = 490, barW = 160, barH = 10;
+      this._kickMeterGfx.fillStyle(0x000000, 0.6);
+      this._kickMeterGfx.fillRect(cx - barW / 2 - 4, cy - barH / 2 - 4, barW + 8, barH + 8);
+      this._kickMeterGfx.fillStyle(0x444444, 1);
+      this._kickMeterGfx.fillRect(cx - barW / 2, cy - barH / 2, barW, barH);
+      // Sweet spot in center
+      this._kickMeterGfx.fillStyle(0xffffff, 0.3);
+      this._kickMeterGfx.fillRect(cx - 20, cy - barH / 2, 40, barH);
+      // Moving marker
+      const markerX = cx + aim * (barW / 2);
+      this._kickMeterGfx.fillStyle(0xff3300, 1);
+      this._kickMeterGfx.fillRect(markerX - 3, cy - barH / 2 - 2, 6, barH + 4);
+      this.hud.showMessage('AIM — Press SPACE to lock', 0.05);
 
       if (this._actionJustPressed()) {
         this.fgSwinging = false;
@@ -1327,7 +1356,7 @@ export default class GameScene extends Phaser.Scene {
     } else if (this.kickCharging) {
       this.kickPower += dt * 1.5;
       if (this.kickPower > 1) this.kickPower = 1;
-      this.hud.showMessage('POWER: ' + Math.round(this.kickPower * 100) + '% | Release SPACE', 0.05);
+      this._drawKickMeter(this.kickPower, 'FG POWER');
 
       if (!this._actionHeld()) {
         // Evaluate FG
@@ -1338,6 +1367,7 @@ export default class GameScene extends Phaser.Scene {
         const made = aimOk && powerOk && distOk;
 
         this.field.clearOverlays();
+        if (this._kickMeterGfx) this._kickMeterGfx.clear();
         this.state = State.PLAY_DEAD;
         this.stateTimer = 2.5;
         this.kickCharging = false;
@@ -1345,7 +1375,8 @@ export default class GameScene extends Phaser.Scene {
         if (made) {
           this.match.scoreFieldGoal();
           this.hud.showMessage('FIELD GOAL IS GOOD! ' + dist + ' yards!', 2.5);
-          this.afterTDKickoff = true; // scoring team kicks off
+          this._flashScreen(0x00ff00, 300);
+          this.afterTDKickoff = true;
         } else {
           // NFL: defense takes over at the spot of the kick
           this.match.changePossession();
@@ -1356,10 +1387,17 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  // ── Screen effects ──
+  _flashScreen(color, durationMs) {
+    this.cameras.main.flash(durationMs || 200, (color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff, true);
+  }
+
+  _shakeScreen(intensity, durationMs) {
+    this.cameras.main.shake(durationMs || 150, intensity || 0.005, true);
+  }
+
   updateCamera(dt) {
-    // Static camera — field is sized to fit the viewport exactly, so
-    // the entire field (both sidelines and both end zones) is always visible.
-    // No scrolling or zoom needed.
+    // Static camera — full field always visible.
   }
 
   shutdown() {

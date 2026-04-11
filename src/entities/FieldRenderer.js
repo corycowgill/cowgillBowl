@@ -8,12 +8,24 @@ export default class FieldRenderer {
   constructor(scene) {
     this.scene = scene;
     this.graphics = scene.add.graphics();
+    this.homeTeam = null;
+    this.awayTeam = null;
+    this._ezTexts = [];
+  }
+
+  setTeams(homeTeam, awayTeam, homeGoingRight) {
+    this.homeTeam = homeTeam;
+    this.awayTeam = awayTeam;
+    this.homeGoingRight = homeGoingRight;
     this.draw();
   }
 
   draw() {
     const g = this.graphics;
     g.clear();
+    this._ezTexts.forEach(t => t.destroy());
+    this._ezTexts = [];
+
     const fl = FIELD_LEFT, ft = FIELD_TOP, fw = FIELD_WIDTH_PX, ez = END_ZONE_PX;
 
     // Yard stripes
@@ -23,10 +35,25 @@ export default class FieldRenderer {
       g.fillRect(fl + ez + y * YARD_PX, ft, YARD_PX, fw);
     }
 
-    // End zones
-    g.fillStyle(END_ZONE_COLOR, 1);
+    // End zones — team-colored if teams are set
+    const leftTeam = this.homeGoingRight ? this.awayTeam : this.homeTeam;
+    const rightTeam = this.homeGoingRight ? this.homeTeam : this.awayTeam;
+    const leftColor = leftTeam ? leftTeam.colors.primary : END_ZONE_COLOR;
+    const rightColor = rightTeam ? rightTeam.colors.primary : END_ZONE_COLOR;
+
+    g.fillStyle(leftColor, 1);
     g.fillRect(fl, ft, ez, fw);
+    g.fillStyle(rightColor, 1);
     g.fillRect(fl + ez + FIELD_LENGTH_PX, ft, ez, fw);
+
+    // Diagonal stripes in end zones for texture
+    g.lineStyle(1, 0xffffff, 0.08);
+    for (let i = -20; i < 40; i++) {
+      const sx = fl + i * 8;
+      g.lineBetween(sx, ft, sx + fw * 0.4, ft + fw);
+      const sx2 = fl + ez + FIELD_LENGTH_PX + i * 8;
+      g.lineBetween(sx2, ft, sx2 + fw * 0.4, ft + fw);
+    }
 
     // Border
     g.lineStyle(2, LINE_COLOR, 1);
@@ -54,14 +81,23 @@ export default class FieldRenderer {
     for (let y = 10; y <= 90; y += 10) {
       const label = y <= 50 ? y : 100 - y;
       const x = fl + ez + y * YARD_PX;
-      this.scene.add.text(x, ft + 8, label, style).setOrigin(0.5, 0);
-      this.scene.add.text(x, ft + fw - 16, label, style).setOrigin(0.5, 0);
+      this._ezTexts.push(this.scene.add.text(x, ft + 8, label, style).setOrigin(0.5, 0));
+      this._ezTexts.push(this.scene.add.text(x, ft + fw - 16, label, style).setOrigin(0.5, 0));
     }
 
-    // End zone text
-    const ezStyle = { fontFamily: 'monospace', fontSize: '14px', color: '#ffffff', fontStyle: 'bold', align: 'center' };
-    this.scene.add.text(fl + ez / 2, ft + fw / 2, 'END\nZONE', ezStyle).setOrigin(0.5);
-    this.scene.add.text(fl + ez + FIELD_LENGTH_PX + ez / 2, ft + fw / 2, 'END\nZONE', ezStyle).setOrigin(0.5);
+    // End zone team names
+    const ezStyle = {
+      fontFamily: 'monospace', fontSize: '11px', color: '#ffffff',
+      fontStyle: 'bold', align: 'center', stroke: '#000000', strokeThickness: 2,
+    };
+    const leftName = leftTeam ? leftTeam.name.toUpperCase() : 'END ZONE';
+    const rightName = rightTeam ? rightTeam.name.toUpperCase() : 'END ZONE';
+    this._ezTexts.push(
+      this.scene.add.text(fl + ez / 2, ft + fw / 2, leftName, ezStyle).setOrigin(0.5)
+    );
+    this._ezTexts.push(
+      this.scene.add.text(fl + ez + FIELD_LENGTH_PX + ez / 2, ft + fw / 2, rightName, ezStyle).setOrigin(0.5)
+    );
 
     // Goal lines
     g.lineStyle(3, 0xffff00, 0.7);
