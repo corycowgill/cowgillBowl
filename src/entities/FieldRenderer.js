@@ -163,7 +163,29 @@ export default class FieldRenderer {
     g.lineBetween(fl + ez, ft, fl + ez, ft + fw);
     g.lineBetween(fl + ez + FIELD_LENGTH_PX, ft, fl + ez + FIELD_LENGTH_PX, ft + fw);
 
+    // ── Pylons (orange markers at end zone corners) ──
+    const pylonColor = 0xff6600;
+    const pylonSize = 4;
+    const glX = fl + ez;                          // left goal line
+    const grX = fl + ez + FIELD_LENGTH_PX;        // right goal line
+    g.fillStyle(pylonColor, 0.9);
+    g.fillTriangle(glX - pylonSize, ft - 2, glX + pylonSize, ft - 2, glX, ft - pylonSize - 2);
+    g.fillTriangle(glX - pylonSize, ft + fw + 2, glX + pylonSize, ft + fw + 2, glX, ft + fw + pylonSize + 2);
+    g.fillTriangle(grX - pylonSize, ft - 2, grX + pylonSize, ft - 2, grX, ft - pylonSize - 2);
+    g.fillTriangle(grX - pylonSize, ft + fw + 2, grX + pylonSize, ft + fw + 2, grX, ft + fw + pylonSize + 2);
+
     g.setDepth(-1);
+  }
+
+  // ── Ball spot marker (small orange diamond) ──
+  drawBallSpot(x) {
+    if (this._spotGfx) this._spotGfx.destroy();
+    this._spotGfx = this.scene.add.graphics();
+    this._spotGfx.fillStyle(0xff8800, 0.7);
+    const cy = FIELD_TOP + FIELD_WIDTH_PX / 2;
+    this._spotGfx.fillTriangle(x - 4, cy, x, cy - 4, x + 4, cy);
+    this._spotGfx.fillTriangle(x - 4, cy, x, cy + 4, x + 4, cy);
+    this._spotGfx.setDepth(1);
   }
 
   drawLOS(scrimmageX) {
@@ -187,5 +209,6 @@ export default class FieldRenderer {
   clearOverlays() {
     if (this._losLine) { this._losLine.destroy(); this._losLine = null; }
     if (this._fdLine) { this._fdLine.destroy(); this._fdLine = null; }
+    if (this._spotGfx) { this._spotGfx.destroy(); this._spotGfx = null; }
   }
 }

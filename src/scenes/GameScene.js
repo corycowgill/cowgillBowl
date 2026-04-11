@@ -20,6 +20,7 @@ import PlayCallUI from '../ui/PlayCallUI.js';
 import MobileControls from '../ui/MobileControls.js';
 import GamepadManager from '../ui/GamepadManager.js';
 import SoundManager from '../ui/SoundManager.js';
+import ParticleEffects from '../ui/ParticleEffects.js';
 
 const State = {
   COIN_TOSS: 'coin_toss',
@@ -100,6 +101,7 @@ export default class GameScene extends Phaser.Scene {
     });
     this.gamepad = new GamepadManager();
     this.sound_mgr = new SoundManager();
+    this.particles = new ParticleEffects(this);
 
     // Play state
     this.state = State.COIN_TOSS;
@@ -243,6 +245,7 @@ export default class GameScene extends Phaser.Scene {
     const goingRight = this.match.offenseGoingRight;
     const losX = yardToPx(this.match.ballYardLine, goingRight);
     this.field.drawLOS(losX);
+    this.field.drawBallSpot(losX);
     const fdYard = Math.min(this.match.ballYardLine + this.match.yardsToGo, 100);
     const fdX = yardToPx(fdYard, goingRight);
     this.field.drawFirstDownLine(fdX);
@@ -577,7 +580,10 @@ export default class GameScene extends Phaser.Scene {
       this.sound_mgr.touchdown();
       this.stateTimer = 3;
       this.afterTD = true;
-      if (this.ballCarrier) this.ballCarrier.playCelebrateAnim();
+      if (this.ballCarrier) {
+        this.ballCarrier.playCelebrateAnim();
+        this.particles.tdConfetti(this.ballCarrier.sprite.x, this.ballCarrier.sprite.y);
+      }
       this.offensePlayers.forEach(p => p.playCelebrateAnim());
       return;
     }
@@ -600,6 +606,9 @@ export default class GameScene extends Phaser.Scene {
 
     if (result === 'first_down') {
       this.sound_mgr.firstDown();
+      if (this.ballCarrier) {
+        this.particles.firstDownFlash(this.ballCarrier.sprite.x, this.ballCarrier.sprite.y);
+      }
       message += ' — FIRST DOWN!';
     }
 
@@ -683,6 +692,7 @@ export default class GameScene extends Phaser.Scene {
     this.homePlayers.forEach(p => p.update(dt));
     this.awayPlayers.forEach(p => p.update(dt));
     this.ball.update(dt);
+    this.particles.update(dt);
 
     // Tick clock
     const clockResult = this.match.tickClock(dt, this.state === State.LIVE_PLAY);
@@ -877,6 +887,7 @@ export default class GameScene extends Phaser.Scene {
     this._kickMeterGfx.clear();
     this.kickCharging = false;
     this.sound_mgr.kick();
+    this.particles.kickPuff(this.ball.sprite.x, this.ball.sprite.y);
 
     const goingRight = this.match.offenseGoingRight;
     const kickYards = 25 + Math.floor(this.kickPower * 50);
@@ -955,6 +966,7 @@ export default class GameScene extends Phaser.Scene {
       this._shakeScreen(0.008, 300);
       this.sound_mgr.touchdown();
       this.ballCarrier.playCelebrateAnim();
+      this.particles.tdConfetti(this.ballCarrier.sprite.x, this.ballCarrier.sprite.y);
       this.homePlayers.forEach(p => p.stop());
       this.awayPlayers.forEach(p => p.stop());
       this.state = State.PLAY_DEAD;
@@ -1047,6 +1059,7 @@ export default class GameScene extends Phaser.Scene {
           this._shakeScreen(0.004, 120);
           this.sound_mgr.hit(0.6);
           this.sound_mgr.whistle();
+          this.particles.tackleDust(this.ballCarrier.sprite.x, this.ballCarrier.sprite.y);
           const yardsGained = this.executor.pxToYardsFromLOS(
             this.ballCarrier.sprite.x, this.match.ballYardLine, goingRight
           );
@@ -1150,6 +1163,7 @@ export default class GameScene extends Phaser.Scene {
             this._shakeScreen(0.007, 200);
             this.sound_mgr.hit(0.9);
             this.sound_mgr.whistle();
+            this.particles.hitSpark(this.qb.sprite.x, this.qb.sprite.y);
             this.handlePlayDead(yardsGained, 'SACKED!');
           }
           return;
