@@ -64,12 +64,15 @@ export const CLOCK_SPEED_LIVE = 3;      // clock runs 3× during live play
 export const CLOCK_SPEED_DEAD = 6;      // clock runs 6× between plays
 
 // ── Colors ──
-export const FIELD_GREEN = 0x2d8c3c;
-export const FIELD_DARK = 0x267332;
+export const FIELD_GREEN = 0x328c40;
+export const FIELD_DARK = 0x2a7834;
 export const END_ZONE_COLOR = 0x1a5c28;
 export const LINE_COLOR = 0xffffff;
-export const YARD_NUM_COLOR = '#ffffff';
-export const HASH_COLOR = 0xcccccc;
+export const YARD_NUM_COLOR = '#dddddd';
+export const HASH_COLOR = 0xbbbbbb;
+export const SIDELINE_COLOR = 0x224422;
+export const CROWD_COLOR_1 = 0x1a1a2a;
+export const CROWD_COLOR_2 = 0x22223a;
 
 // ── UI ──
 export const HUD_BG = 0x111111;

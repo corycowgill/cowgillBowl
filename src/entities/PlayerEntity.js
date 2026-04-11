@@ -57,15 +57,19 @@ export default class PlayerEntity {
 
     this.sprite.entity = this;
 
+    // Shadow under each player
+    this.shadow = scene.add.ellipse(0, 0, 18, 8, 0x000000, 0.25);
+    this.shadow.setDepth(3);
+
     // Selection ring (drawn around controlled player)
     this.ring = scene.add.graphics();
-    this.ring.setDepth(11);
+    this.ring.setDepth(13);
 
-    // Star indicator
+    // Star glow for star players
     this.starGfx = null;
     if (data.star) {
       this.starGfx = scene.add.graphics();
-      this.starGfx.setDepth(11);
+      this.starGfx.setDepth(9);
     }
 
     this.homeX = 0;
@@ -127,23 +131,35 @@ export default class PlayerEntity {
       }
     }
 
-    // Selection ring
+    // Shadow follows player (offset down-right for depth illusion)
+    this.shadow.x = this.sprite.x + 2;
+    this.shadow.y = this.sprite.y + 10;
+
+    // Pulsing selection ring for controlled player
     this.ring.clear();
     if (this.controlled) {
-      this.ring.lineStyle(2, 0xffffff, 1);
-      this.ring.strokeCircle(this.sprite.x, this.sprite.y, this.useFallback ? PLAYER_RADIUS + 3 : 18);
+      const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+      const r = this.useFallback ? PLAYER_RADIUS + 4 : 17;
+      this.ring.lineStyle(2.5, 0xffffff, pulse);
+      this.ring.strokeCircle(this.sprite.x, this.sprite.y, r);
+      // Directional arrow showing facing direction
+      this.ring.fillStyle(0xffffff, pulse * 0.8);
+      const vx = this.sprite.body.velocity.x;
+      const vy = this.sprite.body.velocity.y;
+      if (Math.abs(vx) > 5 || Math.abs(vy) > 5) {
+        const ang = Math.atan2(vy, vx);
+        const ax = this.sprite.x + Math.cos(ang) * (r + 5);
+        const ay = this.sprite.y + Math.sin(ang) * (r + 5);
+        this.ring.fillCircle(ax, ay, 2.5);
+      }
     }
 
-    // Star indicator
+    // Star glow — soft pulsing halo for star players
     if (this.starGfx) {
       this.starGfx.clear();
-      this.starGfx.lineStyle(1, 0xffff00, 0.8);
-      this.starGfx.strokeCircle(this.sprite.x, this.sprite.y, this.useFallback ? PLAYER_RADIUS + 1 : 16);
-    }
-
-    // Fallback circle rendering
-    if (this.useFallback) {
-      // The circle is already rendered by Phaser; no extra work needed
+      const glow = 0.15 + Math.sin(Date.now() * 0.004) * 0.1;
+      this.starGfx.fillStyle(0xffff00, glow);
+      this.starGfx.fillCircle(this.sprite.x, this.sprite.y, 20);
     }
   }
 
@@ -204,6 +220,7 @@ export default class PlayerEntity {
     this.sprite.destroy();
     this.label.destroy();
     this.ring.destroy();
+    this.shadow.destroy();
     if (this.starGfx) this.starGfx.destroy();
   }
 }
