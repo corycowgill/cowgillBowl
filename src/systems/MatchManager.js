@@ -143,10 +143,11 @@ export default class MatchManager {
   }
 
   setupAfterTouchdown() {
-    // PAT from the 3-yard line (97 yard line)
-    this.ballYardLine = 97;
+    // NFL: PAT from the 15-yard line (snap to the 2-yard line)
+    // In our system, 98 = 2 yards from the opponent's end zone
+    this.ballYardLine = 98;
     this.down = 1;
-    this.yardsToGo = 3;
+    this.yardsToGo = 2;
     this.phase = 'pat';
   }
 

@@ -182,8 +182,10 @@ export default class GameScene extends Phaser.Scene {
   startCoinToss() {
     this.state = State.COIN_TOSS;
     this.stateTimer = 1.5;
-    // Home team receives first
-    this.match.possession = 'away'; // away kicks off
+    // Home team receives first. Set possession to home so that after the
+    // kickoff return, home is on offense. In startKickoff(), defensePlayers
+    // (away) kick, offensePlayers (home) receive — correct.
+    this.match.possession = 'home';
     this.hud.showMessage('COIN TOSS — ' + this.homeTeam.city + ' receives!', 1.5);
   }
 
@@ -494,15 +496,18 @@ export default class GameScene extends Phaser.Scene {
       // AI kicks
       const accuracy = 0.5 + Math.random() * 0.4;
       const made = dist <= 50 && accuracy > 0.35;
+      this.state = State.PLAY_DEAD;
+      this.stateTimer = 2.5;
       if (made) {
         this.match.scoreFieldGoal();
         this.hud.showMessage('FIELD GOAL IS GOOD! ' + dist + ' yards', 2);
+        this.afterTDKickoff = true; // scoring team kicks off
       } else {
+        // NFL: defense takes over at the spot of the kick
+        this.match.changePossession();
         this.hud.showMessage('FIELD GOAL MISSED! ' + dist + ' yards', 2);
+        this.afterMissedFG = true;
       }
-      this.state = State.PLAY_DEAD;
-      this.stateTimer = 2.5;
-      this.afterFGOrPunt = true;
       return;
     }
 
@@ -723,18 +728,26 @@ export default class GameScene extends Phaser.Scene {
             this.startPAT();
           } else if (this.afterTDKickoff) {
             this.afterTDKickoff = false;
-            this.match.setupKickoff(this.match.possession === 'home' ? 'away' : 'home');
-            this.match.changePossession();
+            // Scoring team kicks off: possession is still the scoring team,
+            // so they kick and the OTHER team receives.
+            const receiver = this.match.possession === 'home' ? 'away' : 'home';
+            this.match.setupKickoff(receiver);
             this.startKickoff();
           } else if (this.afterSafety) {
             this.afterSafety = false;
+            // Team that gave up the safety (on offense when pushed back)
+            // must kick from their own 20. Possession is still theirs.
             this.match.setupAfterSafety();
             this.startKickoff();
-          } else if (this.afterFGOrPunt) {
-            this.afterFGOrPunt = false;
-            this.match.setupKickoff(this.match.possession === 'home' ? 'away' : 'home');
-            this.match.changePossession();
-            this.startKickoff();
+          } else if (this.afterPuntNoReturn) {
+            // Punt already handled possession change during executePunt;
+            // just go to play call for the receiving team.
+            this.afterPuntNoReturn = false;
+            this.startPlayCall();
+          } else if (this.afterMissedFG) {
+            // NFL rule: defense takes over at the spot of the kick
+            this.afterMissedFG = false;
+            this.startPlayCall();
           } else {
             this.startPlayCall();
           }
@@ -843,25 +856,38 @@ export default class GameScene extends Phaser.Scene {
 
     const goingRight = this.match.offenseGoingRight;
     const kickYards = 25 + Math.floor(this.kickPower * 50);
+
+    // NFL touchback: if the kick reaches the end zone (100+ yards from
+    // kicking team's 35 = 65+ kick yards), ball placed at the 25-yard line
+    if (kickYards >= 65) {
+      this.match.ballYardLine = 25;
+      this.match.down = 1;
+      this.match.yardsToGo = 10;
+      this.hud.showMessage('TOUCHBACK — Ball at the 25', 1.8);
+      this.homePlayers.forEach(p => p.stop());
+      this.awayPlayers.forEach(p => p.stop());
+      this.state = State.PLAY_DEAD;
+      this.stateTimer = 1.8;
+      return;
+    }
+
     // Ball lands at this yard (from receiving team's perspective)
     const landYard = Math.max(2, Math.min(95, kickYards));
-
-    // Place ball at landing spot, give to the kick returner
-    const landX = yardToPx(100 - landYard, goingRight);
+    const recvYard = 100 - landYard;
+    const landX = yardToPx(recvYard, goingRight);
     this.ball.placeAt(landX, fieldCenterY());
 
     if (this.kickReturner) {
       this.kickReturner.setPosition(landX, fieldCenterY());
       this.ball.attachTo(this.kickReturner);
       this.ballCarrier = this.kickReturner;
-      // Human controls the returner if they're the receiving team
       const humanReceiving = this.match.possession === this.humanSide;
       if (humanReceiving) {
         this.kickReturner.setControlled(true);
       }
     }
 
-    this.match.ballYardLine = 100 - landYard;
+    this.match.ballYardLine = recvYard;
     this.hud.showMessage('KICK RETURN! Run it back!', 1.5);
     this.state = State.KICKOFF_RETURN;
     this.match.isClockRunning = true;
@@ -1311,18 +1337,21 @@ export default class GameScene extends Phaser.Scene {
         const distOk = dist <= 55;
         const made = aimOk && powerOk && distOk;
 
-        if (made) {
-          this.match.scoreFieldGoal();
-          this.hud.showMessage('FIELD GOAL IS GOOD! ' + dist + ' yards!', 2.5);
-        } else {
-          this.hud.showMessage('FIELD GOAL MISSED! ' + dist + ' yards', 2);
-          this.match.changePossession();
-        }
         this.field.clearOverlays();
         this.state = State.PLAY_DEAD;
         this.stateTimer = 2.5;
-        this.afterFGOrPunt = true;
         this.kickCharging = false;
+
+        if (made) {
+          this.match.scoreFieldGoal();
+          this.hud.showMessage('FIELD GOAL IS GOOD! ' + dist + ' yards!', 2.5);
+          this.afterTDKickoff = true; // scoring team kicks off
+        } else {
+          // NFL: defense takes over at the spot of the kick
+          this.match.changePossession();
+          this.hud.showMessage('FIELD GOAL MISSED! ' + dist + ' yards', 2);
+          this.afterMissedFG = true;
+        }
       }
     }
   }
