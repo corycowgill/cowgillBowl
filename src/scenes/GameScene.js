@@ -24,6 +24,7 @@ const State = {
   COIN_TOSS: 'coin_toss',
   KICKOFF_SETUP: 'kickoff_setup',
   KICKOFF_LIVE: 'kickoff_live',
+  KICKOFF_RETURN: 'kickoff_return',
   PLAY_CALL: 'play_call',
   PRE_SNAP: 'pre_snap',
   LIVE_PLAY: 'live_play',
@@ -32,7 +33,8 @@ const State = {
   PAT_LIVE: 'pat_live',
   FG_AIM: 'fg_aim',
   FG_LIVE: 'fg_live',
-  PUNT_LIVE: 'punt_live',
+  PUNT_KICK: 'punt_kick',
+  PUNT_RETURN: 'punt_return',
   QUARTER_END: 'quarter_end',
   HALFTIME: 'halftime',
   GAME_OVER: 'game_over',
@@ -191,35 +193,39 @@ export default class GameScene extends Phaser.Scene {
     this.match.phase = 'kickoff';
 
     const goingRight = this.match.offenseGoingRight;
-    const losYard = 35; // kickoff from 35 for kicking team
+    const centerY = fieldCenterY();
 
-    // Place kicking team (current offense side since possession not yet flipped)
-    const kickingPlayers = this.defensePlayers; // defense is kicking
+    // Kicking team (defense of receiving team) lines up at 35
+    const kickingPlayers = this.defensePlayers;
     const receivingPlayers = this.offensePlayers;
 
-    // Kicking team lines up at 35
     const kickX = yardToPx(35, !goingRight);
-    const centerY = fieldCenterY();
     kickingPlayers.forEach((p, i) => {
-      p.setPosition(kickX + (i % 2 === 0 ? -5 : 5), centerY + (i - 5) * 25);
+      p.setPosition(kickX + (i % 2 === 0 ? -5 : 5), centerY + (i - 5) * 22);
       p.goingRight = !goingRight;
       p.stop();
+      p.resetAnim();
     });
 
-    // Receiving team lines up deep
-    const recvX = yardToPx(5, goingRight);
+    // Receiving team lines up deep — pick the fastest player as the returner
+    const recvX = yardToPx(8, goingRight);
+    let bestSpeed = 0;
+    this.kickReturner = null;
     receivingPlayers.forEach((p, i) => {
-      p.setPosition(recvX + (i % 3) * 15, centerY + (i - 5) * 25);
+      p.setPosition(recvX + (i % 3) * 12, centerY + (i - 5) * 22);
       p.goingRight = goingRight;
       p.stop();
+      p.resetAnim();
+      if (p.data.spd > bestSpeed) { bestSpeed = p.data.spd; this.kickReturner = p; }
     });
 
-    // Ball at kicker position
     this.ball.placeAt(kickX, centerY);
     this.kickPower = 0;
     this.kickCharging = false;
+    this._kickMeterGfx = this._kickMeterGfx || this.add.graphics().setScrollFactor(0).setDepth(200);
+    this._kickMeterGfx.clear();
 
-    this.hud.showMessage('KICKOFF — Press SPACE to kick!', 1.5);
+    this.hud.showMessage('KICKOFF — Hold SPACE to charge, release to kick!', 1.5);
   }
 
   startPlayCall() {
@@ -398,34 +404,81 @@ export default class GameScene extends Phaser.Scene {
   }
 
   startPunt() {
-    this.state = State.PUNT_LIVE;
-    this.stateTimer = 0;
+    this.state = State.PUNT_KICK;
     this.kickPower = 0;
-    this.kickCharging = true;
+    this.kickCharging = false;
+    this._kickMeterGfx = this._kickMeterGfx || this.add.graphics().setScrollFactor(0).setDepth(200);
+    this._kickMeterGfx.clear();
 
     if (!this.humanOnOffense) {
-      // AI punts automatically
-      this.kickPower = 0.6 + Math.random() * 0.3;
+      // AI punts with decent power, then return phase
+      this.kickPower = 0.6 + Math.random() * 0.25;
       this.executePunt();
     } else {
-      this.hud.showMessage('PUNT — Hold SPACE to set power!', 1.5);
+      this.hud.showMessage('PUNT — Hold SPACE to charge, release to kick!', 1.5);
+    }
+  }
+
+  updatePuntKick(dt) {
+    if (!this.kickCharging && this._actionJustPressed()) {
+      this.kickCharging = true;
+      this.kickPower = 0;
+    }
+    if (this.kickCharging) {
+      this.kickPower += dt * 1.2;
+      if (this.kickPower >= 1) this.kickPower = 1;
+      this._drawKickMeter(this.kickPower, 'PUNT');
+      if (!this._actionHeld()) {
+        this.executePunt();
+      }
     }
   }
 
   executePunt() {
-    const goingRight = this.match.offenseGoingRight;
-    const puntYards = 25 + Math.floor(this.kickPower * 40);
-    this.match.changePossession();
-    this.match.ballYardLine = Math.max(5, Math.min(95, 100 - (this.match.ballYardLine) + puntYards));
+    if (this._kickMeterGfx) this._kickMeterGfx.clear();
+    this.kickCharging = false;
 
-    // Reset for new possession
+    const puntYards = 20 + Math.floor(this.kickPower * 45);
+    const oldYard = this.match.ballYardLine;
+
+    // Switch possession for the return
+    this.match.changePossession();
+    const newYard = Math.max(3, Math.min(97, 100 - oldYard - puntYards));
+    this.match.ballYardLine = newYard;
+
+    const goingRight = this.match.offenseGoingRight;
+    const landX = yardToPx(newYard, goingRight);
+
+    // Pick a returner (fastest offensive player)
+    let bestSpeed = 0;
+    this.kickReturner = null;
+    this.offensePlayers.forEach(p => {
+      if (p.data.spd > bestSpeed) { bestSpeed = p.data.spd; this.kickReturner = p; }
+    });
+
+    if (this.kickReturner) {
+      this.kickReturner.setPosition(landX, fieldCenterY());
+      this.ball.placeAt(landX, fieldCenterY());
+      this.ball.attachTo(this.kickReturner);
+      this.ballCarrier = this.kickReturner;
+
+      const humanReceiving = this.match.possession === this.humanSide;
+      if (humanReceiving) {
+        this.kickReturner.setControlled(true);
+      }
+    }
+
+    this.hud.showMessage('PUNT ' + puntYards + ' yds — Return it!', 1.5);
+    this.state = State.PUNT_RETURN;
+    this.match.isClockRunning = true;
     this.match.down = 1;
     this.match.yardsToGo = 10;
-
     this.field.clearOverlays();
-    this.hud.showMessage('PUNT — ' + puntYards + ' yards', 1.5);
-    this.state = State.PLAY_DEAD;
-    this.stateTimer = 2;
+  }
+
+  updatePuntReturn(dt) {
+    // Reuse the same logic as kickoff return
+    this.updateKickoffReturn(dt);
   }
 
   startFGAim() {
@@ -633,6 +686,10 @@ export default class GameScene extends Phaser.Scene {
         this.updateKickoff(dt);
         break;
 
+      case State.KICKOFF_RETURN:
+        this.updateKickoffReturn(dt);
+        break;
+
       case State.PLAY_CALL:
         this.updatePlayCallInput();
         break;
@@ -703,8 +760,12 @@ export default class GameScene extends Phaser.Scene {
         this.updateFGAim(dt);
         break;
 
-      case State.PUNT_LIVE:
-        this.updatePuntInput(dt);
+      case State.PUNT_KICK:
+        this.updatePuntKick(dt);
+        break;
+
+      case State.PUNT_RETURN:
+        this.updatePuntReturn(dt);
         break;
 
       case State.QUARTER_END:
@@ -743,41 +804,136 @@ export default class GameScene extends Phaser.Scene {
     this.updateCamera(dt);
   }
 
+  _drawKickMeter(power, label) {
+    const g = this._kickMeterGfx;
+    g.clear();
+    const cx = 480, cy = 500, barW = 200, barH = 14;
+    g.fillStyle(0x000000, 0.6);
+    g.fillRect(cx - barW / 2 - 4, cy - barH / 2 - 4, barW + 8, barH + 8);
+    g.fillStyle(0x444444, 1);
+    g.fillRect(cx - barW / 2, cy - barH / 2, barW, barH);
+    const col = power < 0.5 ? 0x00cc00 : power < 0.8 ? 0xcccc00 : 0xff3300;
+    g.fillStyle(col, 1);
+    g.fillRect(cx - barW / 2, cy - barH / 2, barW * power, barH);
+    // sweet-spot marker at 70-85%
+    g.fillStyle(0xffffff, 0.4);
+    g.fillRect(cx - barW / 2 + barW * 0.7, cy - barH / 2, barW * 0.15, barH);
+  }
+
   updateKickoff(dt) {
-    if (!this.kickCharging && (this._actionJustPressed())) {
+    if (!this.kickCharging && this._actionJustPressed()) {
       this.kickCharging = true;
       this.kickPower = 0;
     }
 
     if (this.kickCharging) {
-      this.kickPower += dt * 1.2;
+      this.kickPower += dt * 1.0;
       if (this.kickPower >= 1) this.kickPower = 1;
+      this._drawKickMeter(this.kickPower, 'KICK');
 
       if (!this._actionHeld()) {
-        // Kick released
         this.executeKickoff();
       }
-    }
-
-    // Show power bar
-    if (this.kickCharging) {
-      this.hud.showMessage('KICK POWER: ' + Math.round(this.kickPower * 100) + '%', 0.1);
     }
   }
 
   executeKickoff() {
+    this._kickMeterGfx.clear();
+    this.kickCharging = false;
+
     const goingRight = this.match.offenseGoingRight;
-    const kickYards = 30 + Math.floor(this.kickPower * 45);
-    this.match.ballYardLine = Math.max(5, Math.min(95, kickYards));
+    const kickYards = 25 + Math.floor(this.kickPower * 50);
+    // Ball lands at this yard (from receiving team's perspective)
+    const landYard = Math.max(2, Math.min(95, kickYards));
+
+    // Place ball at landing spot, give to the kick returner
+    const landX = yardToPx(100 - landYard, goingRight);
+    this.ball.placeAt(landX, fieldCenterY());
+
+    if (this.kickReturner) {
+      this.kickReturner.setPosition(landX, fieldCenterY());
+      this.ball.attachTo(this.kickReturner);
+      this.ballCarrier = this.kickReturner;
+      // Human controls the returner if they're the receiving team
+      const humanReceiving = this.match.possession === this.humanSide;
+      if (humanReceiving) {
+        this.kickReturner.setControlled(true);
+      }
+    }
+
+    this.match.ballYardLine = 100 - landYard;
+    this.hud.showMessage('KICK RETURN! Run it back!', 1.5);
+    this.state = State.KICKOFF_RETURN;
+    this.match.isClockRunning = true;
+  }
+
+  updateKickoffReturn(dt) {
+    if (!this.ballCarrier) {
+      this.endKickReturn();
+      return;
+    }
+
+    const goingRight = this.match.offenseGoingRight;
+    const humanReceiving = this.match.possession === this.humanSide;
+
+    // Human or AI controls the returner
+    if (humanReceiving) {
+      const { mx, my } = this._readMoveInput();
+      this._applyMove(this.ballCarrier, mx, my);
+    } else {
+      this.ai.moveCarrier(this.ballCarrier, this.defensePlayers, goingRight, dt);
+    }
+
+    // AI defenders pursue
+    this.ai.updateDefenders(this.defensePlayers, this.ballCarrier, this.ball, dt);
+
+    // Tackle check
+    const freeDefenders = this.defensePlayers.filter(d => !d.engaged);
+    const results = this.tackleResolver.checkProximity(this.ballCarrier, freeDefenders);
+    for (const r of results) {
+      if (r.result === 'tackle' || r.result === 'stumble' || r.result === 'fumble') {
+        this.endKickReturn();
+        return;
+      }
+    }
+
+    // Touchdown check
+    if (this.executor.isInEndZone(this.ballCarrier.sprite.x, goingRight)) {
+      this.match.scoreTouchdown();
+      this.hud.showMessage('KICK RETURN TOUCHDOWN!', 2.5);
+      this.ballCarrier.playCelebrateAnim();
+      this.homePlayers.forEach(p => p.stop());
+      this.awayPlayers.forEach(p => p.stop());
+      this.state = State.PLAY_DEAD;
+      this.stateTimer = 3;
+      this.afterTD = true;
+      return;
+    }
+
+    // Out of bounds
+    if (this.executor.isOutOfBounds(this.ballCarrier.sprite.x, this.ballCarrier.sprite.y)) {
+      this.endKickReturn();
+      return;
+    }
+  }
+
+  endKickReturn() {
+    const goingRight = this.match.offenseGoingRight;
+    if (this.ballCarrier) {
+      const yardsGained = this.executor.pxToYardsFromLOS(
+        this.ballCarrier.sprite.x, this.match.ballYardLine, goingRight
+      );
+      this.match.ballYardLine = Math.max(1, Math.min(99, this.match.ballYardLine + yardsGained));
+    }
     this.match.down = 1;
     this.match.yardsToGo = 10;
-
+    this.homePlayers.forEach(p => { p.stop(); p.setControlled(false); });
+    this.awayPlayers.forEach(p => { p.stop(); p.setControlled(false); });
+    this.blocking.reset([...this.homePlayers, ...this.awayPlayers]);
     this.field.clearOverlays();
-    this.hud.showMessage('Kickoff — returned to the ' + this.match.getFieldPositionText(), 2);
-
+    this.hud.showMessage('Tackled at the ' + this.match.getFieldPositionText(), 1.5);
     this.state = State.PLAY_DEAD;
-    this.stateTimer = 2;
-    this.kickCharging = false;
+    this.stateTimer = 1.8;
   }
 
   updatePlayCallInput() {
@@ -1168,21 +1324,6 @@ export default class GameScene extends Phaser.Scene {
         this.afterFGOrPunt = true;
         this.kickCharging = false;
       }
-    }
-  }
-
-  updatePuntInput(dt) {
-    if (this.kickCharging) {
-      this.kickPower += dt * 1.5;
-      if (this.kickPower > 1) this.kickPower = 1;
-      this.hud.showMessage('PUNT POWER: ' + Math.round(this.kickPower * 100) + '%', 0.05);
-
-      if (!this._actionHeld()) {
-        this.executePunt();
-      }
-    } else if (this._actionJustPressed()) {
-      this.kickCharging = true;
-      this.kickPower = 0;
     }
   }
 

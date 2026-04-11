@@ -104,11 +104,22 @@ export default class PlayerEntity {
         this.sprite.setFlipX(false);
       }
 
-      // Choose animation based on state
-      const speed = Math.abs(this.sprite.body.velocity.x) + Math.abs(this.sprite.body.velocity.y);
-      if (this.currentAnim !== 'tackle' && this.currentAnim !== 'down' &&
-          this.currentAnim !== 'catch' && this.currentAnim !== 'celebrate') {
-        if (speed > 20) {
+      // One-shot animations auto-expire after a short duration so players
+      // don't freeze in 'tackle'/'down'/'catch'/'celebrate' forever.
+      const isOneShot = this.currentAnim === 'tackle' || this.currentAnim === 'down'
+        || this.currentAnim === 'catch' || this.currentAnim === 'celebrate';
+      if (isOneShot) {
+        this._oneShotTimer = (this._oneShotTimer || 0) + dt;
+        if (this._oneShotTimer > 0.6) {
+          this._oneShotTimer = 0;
+          this.currentAnim = ''; // allow transition below
+        }
+      }
+
+      // Choose animation based on velocity
+      if (!isOneShot || this.currentAnim === '') {
+        const speed = Math.abs(this.sprite.body.velocity.x) + Math.abs(this.sprite.body.velocity.y);
+        if (speed > 15) {
           this.playAnim('run');
         } else {
           this.playAnim('idle');

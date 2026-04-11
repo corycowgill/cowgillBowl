@@ -118,8 +118,14 @@ export default class AIController {
         continue;
       }
 
-      if (p.route) {
+      if (p.route && p.route.length > 0) {
         p.followRoute();
+      } else {
+        // No route assigned — drift downfield so the player doesn't freeze
+        const dir = p.goingRight ? 1 : -1;
+        const driftX = p.homeX + dir * 60;
+        const driftY = p.homeY + (Math.sin(Date.now() * 0.002 + p.homeX) * 15);
+        p.moveToward(driftX, driftY, 0.5);
       }
     }
   }

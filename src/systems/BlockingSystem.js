@@ -45,25 +45,21 @@ export default class BlockingSystem {
         continue;
       }
 
-      // Engaged: clamp positions to HOLD_DIST apart along the LOS axis
+      // Engaged: use velocity-based positioning instead of direct sprite
+      // manipulation, so physics stays smooth and players don't look frozen.
       const dir = blocker.goingRight ? 1 : -1;
-      const targetX = blocker.sprite.x + dir * HOLD_DIST;
-      const targetY = blocker.sprite.y;
+      const holdX = blocker.sprite.x + dir * HOLD_DIST;
+      const holdY = blocker.sprite.y;
 
-      // Drive the defender toward the hold position (+ slight drive back)
-      const dx = targetX - def.sprite.x + dir * BLOCKER_DRIVE_PX_PER_SEC * dt;
-      const dy = targetY - def.sprite.y;
-      def.sprite.x += dx * 0.35;
-      def.sprite.y += dy * 0.35;
+      // Push defender toward the hold position using velocity
+      const dx = holdX - def.sprite.x + dir * BLOCKER_DRIVE_PX_PER_SEC * dt;
+      const dy = holdY - def.sprite.y;
+      def.sprite.body.setVelocity(dx * 3, dy * 3);
 
-      // Heavily dampen both players' velocities
-      def.sprite.body.setVelocity(
-        def.sprite.body.velocity.x * 0.15,
-        def.sprite.body.velocity.y * 0.15
-      );
+      // Blocker jostles in place (small movement so they look alive)
       blocker.sprite.body.setVelocity(
-        blocker.sprite.body.velocity.x * 0.25,
-        blocker.sprite.body.velocity.y * 0.25
+        (Math.random() - 0.5) * 8,
+        (Math.random() - 0.5) * 8
       );
     }
 
